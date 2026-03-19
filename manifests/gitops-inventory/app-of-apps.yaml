@@ -1,0 +1,28 @@
+---
+# App of Apps - Root Application
+# This application manages all other ArgoCD applications
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: apps
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: apps
+    app.kubernetes.io/component: root
+spec:
+  project: default
+  source:
+    repoURL: http://gitlab.gitlab.svc.cluster.local/root/gitops.git
+    targetRevision: HEAD
+    path: inventory
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true

@@ -1,0 +1,46 @@
+---
+# ArgoCD Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    app: argocd
+---
+# Note: ArgoCD core installation is done via kubectl apply
+# This file contains post-install configuration
+
+---
+# ArgoCD Repository Credentials for GitLab
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gitlab-repo-credentials
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: http://gitlab.gitlab.svc.cluster.local/root/gitops.git
+  username: root
+  password: "GitLabAdmin123!"
+---
+# ArgoCD Project for GitOps
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: gitops
+  namespace: argocd
+spec:
+  description: GitOps Project
+  sourceRepos:
+    - '*'
+  destinations:
+    - namespace: '*'
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
