@@ -6,11 +6,7 @@ cluster_exists() {
 }
 
 cluster_status() {
-    if cluster_exists; then
-        echo "RUNNING"
-    else
-        echo "NOT_FOUND"
-    fi
+    if cluster_exists; then echo "RUNNING"; else echo "NOT_FOUND"; fi
 }
 
 cluster_create() {
@@ -27,7 +23,6 @@ cluster_create() {
         fi
     fi
 
-    # Purpose: kind config with extra port mappings for GitLab and ArgoCD
     cat << EOF | kind create cluster --name "${KIND_CLUSTER_NAME}" --config=-
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
@@ -60,4 +55,8 @@ cluster_verify() {
     kubectl cluster-info --context "kind-${KIND_CLUSTER_NAME}"
     kubectl get nodes -o wide
     log_success "VERIFY: Cluster is healthy"
+}
+
+cluster_info_label() {
+    echo "kind (${KIND_CLUSTER_NAME})"
 }
