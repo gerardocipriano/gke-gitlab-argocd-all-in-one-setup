@@ -2,28 +2,45 @@
 set -euo pipefail
 
 # =============================================================================
-# KUBERNETES CLUSTER BOOTSTRAP - MAIN ENTRY POINT
-# Complete GitOps Environment: GKE + GitLab + ArgoCD (App of Apps)
+# KUBERNETES BOOTSTRAP - GitLab + ArgoCD (App of Apps)
+# Supports: kind (local) or GKE (cloud)
+#
+# Usage:
+#   ./deploy-k8s-bootstrap.sh [--provider kind|gke] [COMMAND]
+#   CLUSTER_PROVIDER=gke ./deploy-k8s-bootstrap.sh all
 #
 # Bootstrap flow:
-#   1. prereq   → install tools, enable APIs
-#   2. cluster   → create GKE cluster
-#   3. gitlab    → deploy GitLab CE + root user + PAT
-#   4. gitops    → create repo + push all manifests (gitlab, argocd, inventory)
-#   5. argocd    → install ArgoCD + repo creds + App of Apps
-#
-# After bootstrap, a commit to the gitops repo can:
-#   A. Deploy a new app by adding an ArgoCD Application in inventory/
-#   B. Modify GitLab deployment by editing manifests/gitlab/
-#   C. Modify ArgoCD config by editing manifests/argocd/
+#   1. prereq  → install tools
+#   2. cluster → create K8s cluster (kind or GKE)
+#   3. gitlab  → deploy GitLab CE + root user + PAT
+#   4. gitops  → create repo + push all manifests (auto-discovered)
+#   5. argocd  → install ArgoCD + repo creds + App of Apps
 # =============================================================================
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Source common + config first
 source "${SCRIPT_DIR}/lib/common.sh"
 source "${SCRIPT_DIR}/lib/config.sh"
-source "${SCRIPT_DIR}/lib/prereq.sh"
-source "${SCRIPT_DIR}/lib/cluster.sh"
+
+# Parse --provider flag before sourcing provider-specific modules
+for arg in "$@"; do
+    case "${arg}" in
+        --provider=*) CLUSTER_PROVIDER="${arg#*=}"; shift ;;
+        --provider)   CLUSTER_PROVIDER="${2:-}"; shift 2 ;;
+    esac
+done
+
+if [[ "${CLUSTER_PROVIDER}" != "kind" && "${CLUSTER_PROVIDER}" != "gke" ]]; then
+    echo "ERROR: CLUSTER_PROVIDER must be 'kind' or 'gke' (got: '${CLUSTER_PROVIDER}')" >&2
+    exit 1
+fi
+
+# Source provider-specific modules
+source "${SCRIPT_DIR}/lib/prereq-${CLUSTER_PROVIDER}.sh"
+source "${SCRIPT_DIR}/lib/cluster-${CLUSTER_PROVIDER}.sh"
+
+# Source provider-agnostic modules
 source "${SCRIPT_DIR}/lib/gitlab.sh"
 source "${SCRIPT_DIR}/lib/argocd.sh"
 source "${SCRIPT_DIR}/lib/gitops.sh"
@@ -35,8 +52,13 @@ source "${SCRIPT_DIR}/lib/gitops.sh"
 cmd_portforward() {
     log_step "PORTFORWARD: Setting up port-forwarding..."
 
-    kubectl port-forward -n "${GITLAB_NAMESPACE}" svc/gitlab "${GITLAB_LOCAL_PORT}:80" &
-    local gitlab_pid=$!
+    if [[ "${CLUSTER_PROVIDER}" == "kind" ]]; then
+        log_info "GitLab is accessible directly via NodePort: http://localhost:${GITLAB_LOCAL_PORT}"
+    else
+        kubectl port-forward -n "${GITLAB_NAMESPACE}" svc/gitlab "${GITLAB_LOCAL_PORT}:80" &
+        log_info "GitLab port-forward started (PID: $!)"
+    fi
+
     kubectl port-forward -n "${ARGOCD_NAMESPACE}" svc/argocd-server "${ARGOCD_LOCAL_PORT}:443" &
     local argocd_pid=$!
     sleep 3
@@ -47,19 +69,15 @@ cmd_portforward() {
     argocd_password=$(kubectl -n "${ARGOCD_NAMESPACE}" get secret argocd-initial-admin-secret \
         -o jsonpath="{.data.password}" 2>/dev/null | base64 -d || echo "N/A")
 
-    print_summary_box "SERVICES ACCESS" \
-        "GitLab PID:      ${gitlab_pid}" \
+    print_summary_box "SERVICES ACCESS (${CLUSTER_PROVIDER})" \
         "GitLab URL:      http://localhost:${GITLAB_LOCAL_PORT}" \
         "GitLab User:     root" \
         "GitLab Password: ${GITLAB_ROOT_PASSWORD}" \
         "GitLab PAT:      ${pat:-N/A}" \
         "" \
-        "ArgoCD PID:      ${argocd_pid}" \
         "ArgoCD URL:      https://localhost:${ARGOCD_LOCAL_PORT}" \
         "ArgoCD User:     admin" \
         "ArgoCD Password: ${argocd_password}"
-
-    log_info "To stop: kill ${gitlab_pid} ${argocd_pid}"
 }
 
 # =============================================================================
@@ -67,33 +85,24 @@ cmd_portforward() {
 # =============================================================================
 
 cmd_status() {
-    echo ""
-    echo "=============================================="
-    echo "  GKE CLUSTER STATUS"
-    echo "=============================================="
-    echo ""
+    print_summary_box "CLUSTER STATUS" \
+        "Provider: ${CLUSTER_PROVIDER}" \
+        "Cluster:  $(cluster_info_label)" \
+        "Status:   $(cluster_status)"
 
-    local status
-    status=$(cluster_status 2>/dev/null || echo "UNKNOWN")
-    echo "Cluster Status: ${status}"
-    echo ""
-
-    if [[ "${status}" == "RUNNING" ]]; then
+    if [[ "$(cluster_status)" == "RUNNING" ]]; then
         kubectl get nodes -o wide 2>/dev/null || true
         echo ""
         if kubectl get namespace "${GITLAB_NAMESPACE}" &>/dev/null; then
             log_info "GitLab Pods:"
             kubectl get pods -n "${GITLAB_NAMESPACE}" -o wide 2>/dev/null || true
-            echo ""
             gitlab_info
         fi
         if kubectl get namespace "${ARGOCD_NAMESPACE}" &>/dev/null; then
             log_info "ArgoCD Pods:"
             kubectl get pods -n "${ARGOCD_NAMESPACE}" -o wide 2>/dev/null || true
-            echo ""
             log_info "ArgoCD Applications:"
             kubectl get applications -n "${ARGOCD_NAMESPACE}" 2>/dev/null || true
-            echo ""
             argocd_info
         fi
     fi
@@ -105,23 +114,27 @@ cmd_status() {
 
 print_usage() {
     echo ""
-    echo "Usage: $0 [COMMAND]"
+    echo "Usage: $0 [--provider kind|gke] [COMMAND]"
+    echo ""
+    echo "Providers:"
+    echo "  kind         Local cluster via Docker (default)"
+    echo "  gke          Google Kubernetes Engine"
     echo ""
     echo "Commands:"
     echo "  all          Complete bootstrap (default)"
     echo "  prereq       Install prerequisites"
-    echo "  cluster      Create GKE cluster"
+    echo "  cluster      Create K8s cluster"
     echo "  gitlab       Deploy GitLab CE + root user + PAT"
     echo "  gitops       Create gitops repo + push manifests"
     echo "  argocd       Deploy ArgoCD + App of Apps"
     echo "  portforward  Start port-forwarding"
-    echo "  clean        Remove all resources"
+    echo "  clean        Delete cluster"
     echo "  status       Show cluster status"
     echo ""
-    echo "Environment Variables:"
-    echo "  GITLAB_ROOT_PASSWORD   (default: Gk3B00tstr4p2025xZ)"
-    echo "  GITLAB_LOCAL_PORT      (default: 8080)"
-    echo "  ARGOCD_LOCAL_PORT      (default: 8443)"
+    echo "Examples:"
+    echo "  $0 all                        # kind (default)"
+    echo "  $0 --provider=gke all         # GKE"
+    echo "  CLUSTER_PROVIDER=gke $0 all   # GKE via env var"
     echo ""
 }
 
@@ -130,15 +143,15 @@ print_usage() {
 # =============================================================================
 
 main() {
-    log_header "KUBERNETES BOOTSTRAP: Starting"
-    log_info "Project: ${GKE_PROJECT_ID} | Cluster: ${GKE_CLUSTER_NAME} | Zone: ${GKE_ZONE}"
+    log_header "KUBERNETES BOOTSTRAP [${CLUSTER_PROVIDER}]"
+    log_info "Provider: ${CLUSTER_PROVIDER} | Cluster: $(cluster_info_label)"
 
-    case "${1:-all}" in
+    local cmd="${1:-all}"
+
+    case "${cmd}" in
         prereq)      prereq_check_all ;;
         cluster)
-            prereq_check_gcloud
-            prereq_check_gcloud_auth
-            prereq_set_project
+            prereq_check_all
             cluster_create
             cluster_verify
             ;;
@@ -164,13 +177,13 @@ main() {
             ;;
         help|--help|-h) print_usage ;;
         *)
-            log_error "Unknown command: ${1}"
+            log_error "Unknown command: ${cmd}"
             print_usage
             exit 1
             ;;
     esac
 
-    log_success "KUBERNETES BOOTSTRAP: Operation completed"
+    log_success "KUBERNETES BOOTSTRAP [${CLUSTER_PROVIDER}]: Operation completed"
 }
 
 main "$@"

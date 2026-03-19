@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Purpose: GKE cluster create/delete/verify/credentials
+# Purpose: GKE cluster create/delete/verify
 
 cluster_exists() {
     gcloud container clusters describe "${GKE_CLUSTER_NAME}" \
@@ -123,4 +123,8 @@ cluster_verify() {
     kubectl cluster-info
     kubectl get nodes -o wide
     log_success "VERIFY: Cluster is healthy"
+}
+
+cluster_info_label() {
+    echo "GKE (${GKE_PROJECT_ID}/${GKE_CLUSTER_NAME})"
 }

@@ -122,7 +122,7 @@ spec:
           persistentVolumeClaim:
             claimName: gitlab-config-pvc
 ---
-# GitLab CE Service (ClusterIP - access via port-forward only)
+# GitLab CE Service (NodePort for kind access via extraPortMappings)
 apiVersion: v1
 kind: Service
 metadata:
@@ -131,15 +131,12 @@ metadata:
   labels:
     app: gitlab
 spec:
-  type: ClusterIP
+  type: NodePort
   ports:
     - name: http
       port: 80
       targetPort: http
-      protocol: TCP
-    - name: https
-      port: 443
-      targetPort: https
+      nodePort: 30080
       protocol: TCP
     - name: ssh
       port: 22
