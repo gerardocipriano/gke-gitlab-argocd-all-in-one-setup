@@ -22,6 +22,18 @@ spec:
     requests:
       storage: 20Gi
 ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gitlab-config-pvc
+  namespace: gitlab
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
 # GitLab CE Deployment (Single Pod)
 apiVersion: apps/v1
 kind: Deployment
@@ -45,7 +57,6 @@ spec:
         app: gitlab
         component: server
     spec:
-      # Required for GitLab to work properly
       shareProcessNamespace: true
       containers:
         - name: gitlab
@@ -65,16 +76,12 @@ spec:
             - name: GITLAB_OMNIBUS_CONFIG
               value: |
                 external_url 'http://gitlab.local'
-                gitlab_rails['initial_root_password'] = 'GitLabAdmin123!'
-                gitlab_rails['gitlab_shell_ssh_port'] = 30222
-                # Minimize memory usage for development
+                gitlab_rails['initial_root_password'] = 'Gk3B00tstr4p2025xZ'
+                gitlab_rails['initial_shared_runners_registration_token'] = 'token'
+                gitlab_rails['gitlab_shell_ssh_port'] = 22
                 postgresql['shared_buffers'] = "256MB"
                 sidekiq['max_concurrency'] = 10
-                # Disable unnecessary services
                 prometheus_monitoring['enable'] = false
-                # Disable Geo and other enterprise features
-                geo_primary_role['enable'] = false
-                geo_secondary_role['enable'] = false
           resources:
             requests:
               memory: "4Gi"
@@ -93,7 +100,7 @@ spec:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 180
+            initialDelaySeconds: 300
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 5
@@ -101,7 +108,7 @@ spec:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 120
+            initialDelaySeconds: 180
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
@@ -112,9 +119,10 @@ spec:
         - name: gitlab-logs
           emptyDir: {}
         - name: gitlab-config
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: gitlab-config-pvc
 ---
-# GitLab CE Service (LoadBalancer for cloud-provider-kind)
+# GitLab CE Service (ClusterIP - access via port-forward only)
 apiVersion: v1
 kind: Service
 metadata:
@@ -123,7 +131,7 @@ metadata:
   labels:
     app: gitlab
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   ports:
     - name: http
       port: 80
@@ -136,31 +144,6 @@ spec:
     - name: ssh
       port: 22
       targetPort: ssh
-      protocol: TCP
-  selector:
-    app: gitlab
-    component: server
----
-# GitLab CE Service (NodePort for direct access)
-apiVersion: v1
-kind: Service
-metadata:
-  name: gitlab-nodeport
-  namespace: gitlab
-  labels:
-    app: gitlab
-spec:
-  type: NodePort
-  ports:
-    - name: http
-      port: 80
-      targetPort: http
-      nodePort: 30080
-      protocol: TCP
-    - name: ssh
-      port: 22
-      targetPort: ssh
-      nodePort: 30222
       protocol: TCP
   selector:
     app: gitlab
