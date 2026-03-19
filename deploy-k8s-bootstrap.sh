@@ -2,20 +2,19 @@
 set -euo pipefail
 
 # =============================================================================
-# KUBERNETES CLUSTER BOOTSTRAP - MAIN ENTRY POINT
-# Complete GitOps Environment: GKE + GitLab + ArgoCD (App of Apps)
+# KUBERNETES BOOTSTRAP - kind + GitLab + ArgoCD (App of Apps)
 #
 # Bootstrap flow:
-#   1. prereq   → install tools, enable APIs
-#   2. cluster   → create GKE cluster
-#   3. gitlab    → deploy GitLab CE + root user + PAT
-#   4. gitops    → create repo + push all manifests (gitlab, argocd, inventory)
-#   5. argocd    → install ArgoCD + repo creds + App of Apps
+#   1. prereq   → install docker, kind, kubectl
+#   2. cluster  → create kind cluster
+#   3. gitlab   → deploy GitLab CE + root user + PAT
+#   4. gitops   → create repo + push all manifests (auto-discovered)
+#   5. argocd   → install ArgoCD + repo creds + App of Apps
 #
 # After bootstrap, a commit to the gitops repo can:
-#   A. Deploy a new app by adding an ArgoCD Application in inventory/
-#   B. Modify GitLab deployment by editing manifests/gitlab/
-#   C. Modify ArgoCD config by editing manifests/argocd/
+#   A. Deploy a new app → add ArgoCD Application in inventory/
+#   B. Modify GitLab    → edit manifests/gitlab/
+#   C. Modify ArgoCD    → edit manifests/argocd/
 # =============================================================================
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,14 +28,12 @@ source "${SCRIPT_DIR}/lib/argocd.sh"
 source "${SCRIPT_DIR}/lib/gitops.sh"
 
 # =============================================================================
-# PORT FORWARDING
+# PORT FORWARDING (ArgoCD only — GitLab uses NodePort via kind)
 # =============================================================================
 
 cmd_portforward() {
-    log_step "PORTFORWARD: Setting up port-forwarding..."
+    log_step "PORTFORWARD: Setting up port-forwarding for ArgoCD..."
 
-    kubectl port-forward -n "${GITLAB_NAMESPACE}" svc/gitlab "${GITLAB_LOCAL_PORT}:80" &
-    local gitlab_pid=$!
     kubectl port-forward -n "${ARGOCD_NAMESPACE}" svc/argocd-server "${ARGOCD_LOCAL_PORT}:443" &
     local argocd_pid=$!
     sleep 3
@@ -48,18 +45,18 @@ cmd_portforward() {
         -o jsonpath="{.data.password}" 2>/dev/null | base64 -d || echo "N/A")
 
     print_summary_box "SERVICES ACCESS" \
-        "GitLab PID:      ${gitlab_pid}" \
-        "GitLab URL:      http://localhost:${GITLAB_LOCAL_PORT}" \
+        "GitLab URL:      http://localhost:${GITLAB_LOCAL_PORT}  (NodePort)" \
         "GitLab User:     root" \
         "GitLab Password: ${GITLAB_ROOT_PASSWORD}" \
         "GitLab PAT:      ${pat:-N/A}" \
         "" \
         "ArgoCD PID:      ${argocd_pid}" \
-        "ArgoCD URL:      https://localhost:${ARGOCD_LOCAL_PORT}" \
+        "ArgoCD URL:      https://localhost:${ARGOCD_LOCAL_PORT}  (port-forward)" \
         "ArgoCD User:     admin" \
         "ArgoCD Password: ${argocd_password}"
 
-    log_info "To stop: kill ${gitlab_pid} ${argocd_pid}"
+    log_info "GitLab is accessible directly (NodePort)"
+    log_info "To stop ArgoCD port-forward: kill ${argocd_pid}"
 }
 
 # =============================================================================
@@ -67,18 +64,11 @@ cmd_portforward() {
 # =============================================================================
 
 cmd_status() {
-    echo ""
-    echo "=============================================="
-    echo "  GKE CLUSTER STATUS"
-    echo "=============================================="
-    echo ""
+    print_summary_box "CLUSTER STATUS" \
+        "Cluster:  ${KIND_CLUSTER_NAME}" \
+        "Status:   $(cluster_status)"
 
-    local status
-    status=$(cluster_status 2>/dev/null || echo "UNKNOWN")
-    echo "Cluster Status: ${status}"
-    echo ""
-
-    if [[ "${status}" == "RUNNING" ]]; then
+    if [[ "$(cluster_status)" == "RUNNING" ]]; then
         kubectl get nodes -o wide 2>/dev/null || true
         echo ""
         if kubectl get namespace "${GITLAB_NAMESPACE}" &>/dev/null; then
@@ -109,16 +99,17 @@ print_usage() {
     echo ""
     echo "Commands:"
     echo "  all          Complete bootstrap (default)"
-    echo "  prereq       Install prerequisites"
-    echo "  cluster      Create GKE cluster"
+    echo "  prereq       Install prerequisites (docker, kind, kubectl)"
+    echo "  cluster      Create kind cluster"
     echo "  gitlab       Deploy GitLab CE + root user + PAT"
-    echo "  gitops       Create gitops repo + push manifests"
+    echo "  gitops       Create gitops repo + push manifests (auto-discovered)"
     echo "  argocd       Deploy ArgoCD + App of Apps"
-    echo "  portforward  Start port-forwarding"
-    echo "  clean        Remove all resources"
+    echo "  portforward  Start port-forwarding (ArgoCD)"
+    echo "  clean        Delete kind cluster"
     echo "  status       Show cluster status"
     echo ""
     echo "Environment Variables:"
+    echo "  KIND_CLUSTER_NAME      (default: gitops-lab)"
     echo "  GITLAB_ROOT_PASSWORD   (default: Gk3B00tstr4p2025xZ)"
     echo "  GITLAB_LOCAL_PORT      (default: 8080)"
     echo "  ARGOCD_LOCAL_PORT      (default: 8443)"
@@ -130,15 +121,13 @@ print_usage() {
 # =============================================================================
 
 main() {
-    log_header "KUBERNETES BOOTSTRAP: Starting"
-    log_info "Project: ${GKE_PROJECT_ID} | Cluster: ${GKE_CLUSTER_NAME} | Zone: ${GKE_ZONE}"
+    log_header "KUBERNETES BOOTSTRAP: kind + GitLab + ArgoCD"
+    log_info "Cluster: ${KIND_CLUSTER_NAME}"
 
     case "${1:-all}" in
         prereq)      prereq_check_all ;;
         cluster)
-            prereq_check_gcloud
-            prereq_check_gcloud_auth
-            prereq_set_project
+            prereq_check_all
             cluster_create
             cluster_verify
             ;;
@@ -157,7 +146,7 @@ main() {
             argocd_deploy
             cmd_status
             echo ""
-            read -r -p "Start port-forwarding now? [Y/n]: " response
+            read -r -p "Start ArgoCD port-forwarding now? [Y/n]: " response
             if [[ ! "${response}" =~ ^[Nn]$ ]]; then
                 cmd_portforward
             fi

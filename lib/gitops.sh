@@ -173,11 +173,10 @@ spec:
             git remote add origin "http://oauth2:\$GITLAB_PAT@\$GITLAB_HOST/root/gitops.git"
           fi
 
-          # Copy staged content into the git repo (preserving .git)
-          cp -r /tmp/staging/* /tmp/gitops/
-          cp -r /tmp/staging/.* /tmp/gitops/ 2>/dev/null || true
-
+          # Copy staged content into the git repo (preserving .git dir)
           cd /tmp/gitops
+          cp -r /tmp/staging/inventory ./
+          cp -r /tmp/staging/manifests ./
 
           echo "Files in repo:"
           find . -type f -not -path './.git/*' | sort
