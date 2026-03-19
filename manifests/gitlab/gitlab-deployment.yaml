@@ -72,7 +72,9 @@ spec:
                 sidekiq['max_concurrency'] = 10
                 # Disable unnecessary services
                 prometheus_monitoring['enable'] = false
-                grafana['enable'] = false
+                # Disable Geo and other enterprise features
+                geo_primary_role['enable'] = false
+                geo_secondary_role['enable'] = false
           resources:
             requests:
               memory: "4Gi"
