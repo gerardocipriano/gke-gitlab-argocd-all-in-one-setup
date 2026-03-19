@@ -369,6 +369,3 @@ MIT License - feel free to use, modify, and distribute.
 - [GitLab CE](https://about.gitlab.com/install/) - DevOps platform
 - [ArgoCD](https://argo-cd.readthedocs.io/) - GitOps continuous delivery
 
----
-
-**Made with ❤️ for learning GitOps**
