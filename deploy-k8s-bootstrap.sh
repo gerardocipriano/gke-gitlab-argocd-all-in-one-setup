@@ -53,24 +53,30 @@ source "${SCRIPT_DIR}/lib/kargo.sh"
 cmd_portforward() {
     log_step "PORTFORWARD: Setting up port-forwarding..."
 
+    # Su kind i NodePort sono gia' mappati sull'host dalla configurazione del cluster,
+    # quindi il port-forward serve solo quando il provider e' GKE.
+    local gitlab_port="${GITLAB_LOCAL_PORT}"
+    local argocd_port="${ARGOCD_LOCAL_PORT}"
+    local kargo_port="${KARGO_LOCAL_PORT}"
+
     if [[ "${CLUSTER_PROVIDER}" == "kind" ]]; then
-        log_info "GitLab is accessible directly via NodePort: http://localhost:${GITLAB_LOCAL_PORT}"
+        log_info "kind: i servizi sono gia' esposti via NodePort, nessun port-forward necessario"
     else
-        kubectl port-forward -n "${GITLAB_NAMESPACE}" svc/gitlab "${GITLAB_LOCAL_PORT}:80" &
-        log_info "GitLab port-forward started (PID: $!)"
+        gitlab_port=$(start_port_forward "${GITLAB_NAMESPACE}" gitlab 80 "${GITLAB_LOCAL_PORT}")
+        log_info "GitLab port-forward su localhost:${gitlab_port}"
+
+        argocd_port=$(start_port_forward "${ARGOCD_NAMESPACE}" argocd-server 443 "${ARGOCD_LOCAL_PORT}")
+        log_info "ArgoCD port-forward su localhost:${argocd_port}"
+
+        if kubectl get svc -n "${KARGO_NAMESPACE}" kargo-api &>/dev/null; then
+            kargo_port=$(start_port_forward "${KARGO_NAMESPACE}" kargo-api 443 "${KARGO_LOCAL_PORT}")
+            log_info "Kargo port-forward su localhost:${kargo_port}"
+        else
+            kargo_port="n/d"
+        fi
+
+        sleep 3
     fi
-
-    kubectl port-forward -n "${ARGOCD_NAMESPACE}" svc/argocd-server "${ARGOCD_LOCAL_PORT}:443" &
-    local argocd_pid=$!
-
-    if [[ "${CLUSTER_PROVIDER}" == "kind" ]]; then
-        log_info "Kargo is accessible directly via NodePort: https://localhost:${KARGO_LOCAL_PORT}"
-    elif kubectl get svc -n "${KARGO_NAMESPACE}" kargo-api &>/dev/null; then
-        kubectl port-forward -n "${KARGO_NAMESPACE}" svc/kargo-api "${KARGO_LOCAL_PORT}:443" &
-        log_info "Kargo port-forward started (PID: $!)"
-    fi
-
-    sleep 3
 
     local pat
     pat=$(gitlab_get_pat)
@@ -79,18 +85,22 @@ cmd_portforward() {
         -o jsonpath="{.data.password}" 2>/dev/null | base64 -d || echo "N/A")
 
     print_summary_box "SERVICES ACCESS (${CLUSTER_PROVIDER})" \
-        "GitLab URL:      http://localhost:${GITLAB_LOCAL_PORT}" \
+        "GitLab URL:      http://localhost:${gitlab_port}" \
         "GitLab User:     root" \
         "GitLab Password: ${GITLAB_ROOT_PASSWORD}" \
         "GitLab PAT:      ${pat:-N/A}" \
         "" \
-        "ArgoCD URL:      https://localhost:${ARGOCD_LOCAL_PORT}" \
+        "ArgoCD URL:      https://localhost:${argocd_port}" \
         "ArgoCD User:     admin" \
         "ArgoCD Password: ${argocd_password}" \
         "" \
-        "Kargo URL:       https://localhost:${KARGO_LOCAL_PORT}" \
+        "Kargo URL:       https://localhost:${kargo_port}" \
         "Kargo User:      admin" \
         "Kargo Password:  ${KARGO_ADMIN_PASSWORD}"
+
+    if [[ "${CLUSTER_PROVIDER}" != "kind" ]]; then
+        log_info "Per fermare i port-forward: pkill -f 'kubectl port-forward'"
+    fi
 }
 
 # =============================================================================
@@ -148,18 +158,20 @@ ask_confirm() {
 cmd_teardown() {
     log_step "TEARDOWN: Starting resource-by-resource cleanup..."
 
-    log_info "==> Kargo (stages, project, namespaces, Helm release)"
-    if ask_confirm "Delete Kargo?"; then
-        kargo_delete
-    else
-        log_info "Skipping Kargo"
-    fi
-
+    # ArgoCD va per primo: finche' e' vivo, la root Application risincronizza e ricrea
+    # le risorse Kargo appena cancellate.
     log_info "==> ArgoCD (Applications, AppProject, credentials, installation)"
     if ask_confirm "Delete ArgoCD?"; then
         argocd_delete
     else
         log_info "Skipping ArgoCD"
+    fi
+
+    log_info "==> Kargo (stages, project, namespaces, Helm release)"
+    if ask_confirm "Delete Kargo?"; then
+        kargo_delete
+    else
+        log_info "Skipping Kargo"
     fi
 
     log_info "==> GitOps (gitops project in GitLab, residual Job/ConfigMap)"

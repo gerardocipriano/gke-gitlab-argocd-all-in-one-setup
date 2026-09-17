@@ -13,6 +13,32 @@ kargo_generate_password_hash() {
     fi
 }
 
+# Il chart di Kargo crea Certificate e Issuer per l'API e i webhook server: senza le CRD di
+# cert-manager l'installazione fallisce in fase di rendering.
+kargo_install_cert_manager() {
+    if kubectl get crd certificates.cert-manager.io &>/dev/null; then
+        log_info "cert-manager already installed"
+        return 0
+    fi
+
+    log_info "Installing cert-manager ${CERT_MANAGER_VERSION} (dipendenza di Kargo)..."
+    helm upgrade --install cert-manager \
+        oci://quay.io/jetstack/charts/cert-manager \
+        --namespace "${CERT_MANAGER_NAMESPACE}" \
+        --create-namespace \
+        --version "${CERT_MANAGER_VERSION}" \
+        --set crds.enabled=true \
+        --wait \
+        --timeout 10m
+
+    kubectl wait --for=condition=Available \
+        deployment/cert-manager-webhook \
+        -n "${CERT_MANAGER_NAMESPACE}" \
+        --timeout=300s
+
+    log_success "cert-manager installed"
+}
+
 kargo_deploy() {
     log_step "KARGO: Deploying Kargo..."
 
@@ -27,6 +53,8 @@ kargo_deploy() {
         fi
     fi
 
+    kargo_install_cert_manager
+
     local password_hash
     password_hash=$(kargo_generate_password_hash)
 
@@ -34,6 +62,10 @@ kargo_deploy() {
     # I caratteri =+/ romperebbero il parsing di helm --set
     token_signing_key=$(openssl rand -base64 48 | tr -d "=+/" | head -c 32)
 
+    # GitLab gira dentro il cluster senza TLS, quindi il repo GitOps si raggiunge in HTTP.
+    # Di default il controller rifiuta di usare credenziali git su HTTP e ogni promozione
+    # fallisce sul clone: per questa demo locale il flag va abilitato. In un ambiente reale
+    # si mette TLS su GitLab e si lascia il default.
     log_info "Installing/Updating Kargo via Helm..."
     helm upgrade --install kargo "${KARGO_CHART}" \
         --namespace "${KARGO_NAMESPACE}" \
@@ -44,7 +76,8 @@ kargo_deploy() {
         --set api.adminAccount.passwordHash="${password_hash}" \
         --set api.adminAccount.tokenSigningKey="${token_signing_key}" \
         --set api.service.type=NodePort \
-        --set api.service.nodePort=30081
+        --set api.service.nodePort=30081 \
+        --set controller.allowCredentialsOverHTTP=true
 
     log_info "Waiting for kargo-api deployment to become Available..."
     kubectl wait --for=condition=Available \
@@ -122,12 +155,21 @@ kargo_delete() {
 
     log_info "Deleting application namespaces..."
     for ns in kargo-demo-dev kargo-demo-staging kargo-demo-prod; do
-        kubectl delete namespace "${ns}" --ignore-not-found 2>/dev/null || true
+        kubectl delete namespace "${ns}" --ignore-not-found --wait=false 2>/dev/null || true
     done
+
+    log_info "Uninstalling cert-manager Helm release..."
+    helm uninstall cert-manager -n "${CERT_MANAGER_NAMESPACE}" 2>/dev/null || true
+    kubectl delete namespace "${CERT_MANAGER_NAMESPACE}" --ignore-not-found --wait=false 2>/dev/null || true
 
     log_info "Uninstalling Kargo Helm release..."
     helm uninstall kargo -n "${KARGO_NAMESPACE}" 2>/dev/null || true
-    kubectl delete namespace "${KARGO_NAMESPACE}" --ignore-not-found 2>/dev/null || true
+    kubectl delete namespace "${KARGO_NAMESPACE}" --ignore-not-found --wait=false 2>/dev/null || true
+
+    # helm lascia in piedi le CRD per policy: senza questo passaggio restano orfane nel cluster
+    log_info "Deleting Kargo CRDs..."
+    kubectl get crd -o name 2>/dev/null | grep 'kargo\.akuity\.io$' |
+        xargs -r kubectl delete --ignore-not-found 2>/dev/null || true
 
     log_success "KARGO: Resources deleted"
 }

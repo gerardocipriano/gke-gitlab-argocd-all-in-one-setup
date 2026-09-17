@@ -16,7 +16,7 @@ Un Project raggruppa tutte le risorse Kargo relative a una applicazione o a una 
 
 ### Warehouse
 
-La Warehouse osserva una o piu' sorgenti di artefatti e produce Freight quando scopre nuove versioni. Nella demo, `manifests/kargo-project/warehouse.yaml` osserva il repository immagini `public.ecr.aws/nginx/nginx` con il vincolo semver `^1.26.0`. Quando esce una nuova tag che soddisfa il vincolo, la Warehouse produce una Freight contentente il riferimento a quell'immagine.
+La Warehouse osserva una o piu' sorgenti di artefatti e produce Freight quando scopre nuove versioni. Nella demo, `manifests/kargo-project/warehouse.yaml` osserva il repository immagini `public.ecr.aws/nginx/nginx` con il vincolo semver `~1.26.0`. Quando esce una nuova tag che soddisfa il vincolo, la Warehouse produce una Freight contentente il riferimento a quell'immagine.
 
 ### Freight
 
@@ -150,6 +150,10 @@ Due modi. Il percorso guidato commenta ogni passo e verifica il risultato:
 
 Chi conosce gia' il flusso puo' usare direttamente lo script di bootstrap, come descritto qui sotto.
 
+Kargo richiede cert-manager: il suo chart crea `Certificate` e `Issuer` per l'API e per i
+webhook server, che con Kubernetes parlano solo in TLS. Lo installa il comando `kargo` prima
+di Kargo stesso, e il teardown lo rimuove.
+
 ### 1. Bootstrap completo
 
 ```bash
@@ -176,7 +180,7 @@ Le credenziali vengono mostrate a schermo. I riferimenti sono:
 
 ### 3. Primo avvio: Warehouse e Freight
 
-Accedi alla UI di Kargo all'indirizzo `https://localhost:8081`. Dopo il login, verifica che il Warehouse `kargo-demo` abbia scoperto le tag dell'immagine `public.ecr.aws/nginx/nginx`. Dovresti vedere delle Freight create automaticamente con le versioni che soddisfano il vincolo `^1.26.0`.
+Accedi alla UI di Kargo all'indirizzo `https://localhost:8081`. Dopo il login, verifica che il Warehouse `kargo-demo` abbia scoperto le tag dell'immagine `public.ecr.aws/nginx/nginx`. Dovresti vedere delle Freight create automaticamente con le versioni che soddisfano il vincolo `~1.26.0`.
 
 ### 4. Promozione su dev
 
@@ -244,6 +248,17 @@ kubectl get freight -n kargo-demo
 | Warehouse senza Freight | Il cluster non riesce a raggiungere il registry pubblico `public.ecr.aws`. Possibile restrizione di rete o DNS. | `kubectl logs -n kargo deployment/kargo-api \| grep -i error` |
 | Namespace del progetto non trovato | Il Project non e' stato ancora sincronizzato da ArgoCD o c'e' un ritardo nel sync-wave. | `kubectl get namespaces \| grep kargo-demo` |
 | Errore di autenticazione nella UI Kargo | La password hash non corrisponde. Verifica che htpasswd o docker siano disponibili per generarla correttamente. | `kubectl get secret -n kargo -l app.kubernetes.io/name=kargo-api -o jsonpath='{.items[0].data}'` |
+
+Tre inciampi visti sul campo, gia' risolti nel repo ma utili da riconoscere:
+
+- Promotion in `Errored` con `could not read Username for http://...`: il controller rifiuta
+  di usare credenziali git su HTTP. Il chart viene installato con
+  `controller.allowCredentialsOverHTTP=true` perche' GitLab qui gira senza TLS.
+- `autoPromotionEnabled` ignorato: da Kargo 1.9 le promotionPolicies stanno nella
+  `ProjectConfig`, non nello `spec` del `Project`, che viene scartato in silenzio.
+- `kubectl create promotion` rifiutato dall'admission webhook: le promozioni si lanciano
+  dalla UI come utente admin di Kargo. Un utente Kubernetes non mappato a un account Kargo
+  non e' autorizzato, anche se e' cluster-admin.
 
 ## 7. Smontare la demo
 

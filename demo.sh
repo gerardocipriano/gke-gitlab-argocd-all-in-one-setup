@@ -163,19 +163,17 @@ verify_kargo() {
 # =============================================================================
 
 step_access() {
+    local gitlab_port="${GITLAB_LOCAL_PORT}"
+    local argocd_port="${ARGOCD_LOCAL_PORT}"
+    local kargo_port="${KARGO_LOCAL_PORT}"
+
     if [[ "${PROVIDER}" == "kind" ]]; then
         log_info "Con kind i servizi sono gia' esposti via NodePort, non serve port-forward."
     else
-        log_info "Avvio i port-forward in background. Restano vivi finche' non li fermi."
-        kubectl port-forward -n "${GITLAB_NAMESPACE}" svc/gitlab "${GITLAB_LOCAL_PORT}:80" \
-            >/tmp/pf-gitlab.log 2>&1 &
-        disown
-        kubectl port-forward -n "${ARGOCD_NAMESPACE}" svc/argocd-server "${ARGOCD_LOCAL_PORT}:443" \
-            >/tmp/pf-argocd.log 2>&1 &
-        disown
-        kubectl port-forward -n "${KARGO_NAMESPACE}" svc/kargo-api "${KARGO_LOCAL_PORT}:443" \
-            >/tmp/pf-kargo.log 2>&1 &
-        disown
+        log_info "Avvio i port-forward in background, su porte libere dell'host."
+        gitlab_port=$(start_port_forward "${GITLAB_NAMESPACE}" gitlab 80 "${GITLAB_LOCAL_PORT}")
+        argocd_port=$(start_port_forward "${ARGOCD_NAMESPACE}" argocd-server 443 "${ARGOCD_LOCAL_PORT}")
+        kargo_port=$(start_port_forward "${KARGO_NAMESPACE}" kargo-api 443 "${KARGO_LOCAL_PORT}")
         sleep 3
         log_info "Per fermarli: pkill -f 'kubectl port-forward'"
     fi
@@ -185,9 +183,9 @@ step_access() {
         -o jsonpath="{.data.password}" 2>/dev/null | base64 -d || echo "N/A")
 
     print_summary_box "ACCESSI" \
-        "GitLab:  http://localhost:${GITLAB_LOCAL_PORT}  root / ${GITLAB_ROOT_PASSWORD}" \
-        "ArgoCD:  https://localhost:${ARGOCD_LOCAL_PORT} admin / ${argocd_password}" \
-        "Kargo:   https://localhost:${KARGO_LOCAL_PORT}  admin / ${KARGO_ADMIN_PASSWORD}"
+        "GitLab:  http://localhost:${gitlab_port}  root / ${GITLAB_ROOT_PASSWORD}" \
+        "ArgoCD:  https://localhost:${argocd_port} admin / ${argocd_password}" \
+        "Kargo:   https://localhost:${kargo_port}  admin / ${KARGO_ADMIN_PASSWORD}"
 
     echo ""
     log_info "Nella UI di Kargo apri il progetto kargo-demo e guarda tre cose:"

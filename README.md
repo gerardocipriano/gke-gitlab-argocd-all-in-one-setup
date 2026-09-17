@@ -119,7 +119,7 @@ Commands:
   gitlab       Deploy GitLab CE + root user + PAT
   gitops       Create gitops repo + push manifests
   argocd       Deploy ArgoCD + App of Apps
-  kargo        Deploy Kargo + git credentials for the project
+  kargo        Deploy cert-manager + Kargo + git credentials for the project
   portforward  Start port-forwarding
   status       Show cluster status
 

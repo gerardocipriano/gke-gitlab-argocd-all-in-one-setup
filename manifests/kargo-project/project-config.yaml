@@ -1,0 +1,13 @@
+# Configurazione del Project: da Kargo 1.9 le promotionPolicies stanno qui, non nel Project,
+# il cui spec viene ignorato.
+# Solo dev si promuove da solo: appena il Warehouse produce un Freight, parte la promozione.
+# staging e prod restano manuali, sono il gesto da mostrare nella demo.
+apiVersion: kargo.akuity.io/v1alpha1
+kind: ProjectConfig
+metadata:
+  name: kargo-demo
+  namespace: kargo-demo
+spec:
+  promotionPolicies:
+    - stage: dev
+      autoPromotionEnabled: true

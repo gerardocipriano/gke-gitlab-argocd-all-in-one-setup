@@ -39,5 +39,7 @@ if [[ -z "${KARGO_ADMIN_PASSWORD_HASH:-}" ]]; then
     KARGO_ADMIN_PASSWORD_HASH='$2y$10$q.Pdac1DMfDWvcvOLCChf.dZwaKnrU.FRTkrmtY91P8snuWt3ZJ3m'
 fi
 readonly KARGO_ADMIN_PASSWORD_HASH
+readonly CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.16.2}"
+readonly CERT_MANAGER_NAMESPACE="${CERT_MANAGER_NAMESPACE:-cert-manager}"
 readonly KARGO_CHART="${KARGO_CHART:-oci://ghcr.io/akuity/kargo-charts/kargo}"
 readonly KARGO_VERSION="${KARGO_VERSION:-1.9.2}"

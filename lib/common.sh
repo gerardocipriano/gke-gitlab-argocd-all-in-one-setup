@@ -109,3 +109,58 @@ print_summary_box() {
     echo "╚═���════════════════════════════════════════════════════════════╝"
     echo ""
 }
+
+# Purpose: trova una porta TCP libera sull'host, partendo da quella preferita.
+# Serve perche' i port-forward della demo collidono spesso con servizi gia' in ascolto.
+port_in_listen() {
+    local port="$1"
+    if command_exists ss; then
+        ss -ltnH "sport = :${port}" 2>/dev/null | grep -q .
+    else
+        (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null
+    fi
+}
+
+port_is_free() {
+    ! port_in_listen "$1"
+}
+
+find_free_port() {
+    local port="$1"
+    local max_attempts="${2:-50}"
+    local attempt=0
+    while (( attempt < max_attempts )); do
+        if port_is_free "${port}"; then
+            echo "${port}"
+            return 0
+        fi
+        port=$(( port + 1 ))
+        attempt=$(( attempt + 1 ))
+    done
+    log_error "Nessuna porta libera trovata a partire da $1"
+    return 1
+}
+
+# Purpose: port-forward in background che sopravvive alla funzione chiamante.
+# Stampa la porta host effettivamente usata su stdout, i log vanno in ${PF_LOG_DIR}.
+start_port_forward() {
+    local namespace="$1" service="$2" remote_port="$3" preferred_port="$4"
+    local log_dir="${PF_LOG_DIR:-/tmp}"
+    local local_port
+    local_port=$(find_free_port "${preferred_port}") || return 1
+
+    kubectl port-forward -n "${namespace}" "svc/${service}" \
+        "${local_port}:${remote_port}" > "${log_dir}/pf-${service}.log" 2>&1 &
+    disown
+
+    # Attende che il forward sia in ascolto: la chiamata successiva vedra' la porta occupata
+    # e non la riassegnera' a un altro servizio.
+    local attempt=0
+    while (( attempt < 10 )); do
+        port_in_listen "${local_port}" && break
+        sleep 1
+        attempt=$(( attempt + 1 ))
+    done
+
+    echo "${local_port}"
+}

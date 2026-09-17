@@ -7,9 +7,3 @@ metadata:
   annotations:
     # Il namespace kargo-demo nasce da qui: le altre risorse del progetto devono attendere.
     argocd.argoproj.io/sync-wave: "-1"
-spec:
-  # Solo dev si promuove da solo: appena il Warehouse produce un Freight, parte la promozione.
-  # staging e prod restano manuali, sono il gesto da mostrare nella demo.
-  promotionPolicies:
-    - stage: dev
-      autoPromotionEnabled: true
