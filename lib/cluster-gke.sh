@@ -17,8 +17,10 @@ cluster_status() {
 
 cluster_get_credentials() {
     log_info "Getting GKE cluster credentials..."
+    # Il control plane e' raggiungibile solo via DNS endpoint: niente IP pubblico da
+    # autorizzare, l'accesso passa da IAM (ruolo container.developer o superiore).
     gcloud container clusters get-credentials "${GKE_CLUSTER_NAME}" \
-        --project="${GKE_PROJECT_ID}" --zone="${GKE_ZONE}"
+        --project="${GKE_PROJECT_ID}" --zone="${GKE_ZONE}" --dns-endpoint
     log_success "GKE credentials configured"
 }
 
@@ -67,11 +69,10 @@ cluster_create() {
         --cluster-dns=clouddns \
         --cluster-dns-scope=cluster \
         --default-max-pods-per-node "110" \
-        --enable-ip-access \
+        --no-enable-ip-access \
         --security-posture=standard \
         --workload-vulnerability-scanning=disabled \
-        --enable-master-authorized-networks \
-        --master-authorized-networks "${GKE_MASTER_AUTHORIZED_NETWORKS}" \
+        --enable-dns-access \
         --no-enable-google-cloud-access \
         --addons "HorizontalPodAutoscaling,HttpLoadBalancing,GcePersistentDiskCsiDriver" \
         --enable-autoupgrade \

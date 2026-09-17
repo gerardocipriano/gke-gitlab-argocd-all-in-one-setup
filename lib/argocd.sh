@@ -85,6 +85,33 @@ argocd_deploy_app_of_apps() {
     kubectl get applications -n "${ARGOCD_NAMESPACE}" 2>/dev/null || true
 }
 
+argocd_delete() {
+    log_step "ARGOCD: Deleting ArgoCD resources..."
+
+    # Remove finalizers first; otherwise Application deletion hangs indefinitely
+    log_info "Removing finalizers from ArgoCD Applications..."
+    for app in $(kubectl get applications -n "${ARGOCD_NAMESPACE}" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+        kubectl patch application "${app}" -n "${ARGOCD_NAMESPACE}" \
+            --type=json -p='[{"op":"remove","path":"/metadata/finalizers"}]' 2>/dev/null || true
+    done
+
+    log_info "Deleting all ArgoCD Applications..."
+    kubectl delete applications --all -n "${ARGOCD_NAMESPACE}" 2>/dev/null || true
+
+    log_info "Deleting ArgoCD AppProject..."
+    kubectl delete appproject gitops -n "${ARGOCD_NAMESPACE}" --ignore-not-found 2>/dev/null || true
+
+    log_info "Deleting repo credentials secret..."
+    kubectl delete secret gitlab-repo-credentials -n "${ARGOCD_NAMESPACE}" --ignore-not-found 2>/dev/null || true
+
+    log_info "Deleting ArgoCD installation..."
+    kubectl delete -n "${ARGOCD_NAMESPACE}" \
+        -f "https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_VERSION}/manifests/install.yaml" 2>/dev/null || true
+    kubectl delete namespace "${ARGOCD_NAMESPACE}" --ignore-not-found 2>/dev/null || true
+
+    log_success "ARGOCD: Resources deleted"
+}
+
 argocd_info() {
     log_info "ArgoCD Access Information:"
     local argocd_password

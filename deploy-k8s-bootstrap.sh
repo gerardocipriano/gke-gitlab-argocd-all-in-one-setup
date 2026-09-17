@@ -44,6 +44,7 @@ source "${SCRIPT_DIR}/lib/cluster-${CLUSTER_PROVIDER}.sh"
 source "${SCRIPT_DIR}/lib/gitlab.sh"
 source "${SCRIPT_DIR}/lib/argocd.sh"
 source "${SCRIPT_DIR}/lib/gitops.sh"
+source "${SCRIPT_DIR}/lib/kargo.sh"
 
 # =============================================================================
 # PORT FORWARDING
@@ -61,6 +62,14 @@ cmd_portforward() {
 
     kubectl port-forward -n "${ARGOCD_NAMESPACE}" svc/argocd-server "${ARGOCD_LOCAL_PORT}:443" &
     local argocd_pid=$!
+
+    if [[ "${CLUSTER_PROVIDER}" == "kind" ]]; then
+        log_info "Kargo is accessible directly via NodePort: https://localhost:${KARGO_LOCAL_PORT}"
+    elif kubectl get svc -n "${KARGO_NAMESPACE}" kargo-api &>/dev/null; then
+        kubectl port-forward -n "${KARGO_NAMESPACE}" svc/kargo-api "${KARGO_LOCAL_PORT}:443" &
+        log_info "Kargo port-forward started (PID: $!)"
+    fi
+
     sleep 3
 
     local pat
@@ -77,7 +86,11 @@ cmd_portforward() {
         "" \
         "ArgoCD URL:      https://localhost:${ARGOCD_LOCAL_PORT}" \
         "ArgoCD User:     admin" \
-        "ArgoCD Password: ${argocd_password}"
+        "ArgoCD Password: ${argocd_password}" \
+        "" \
+        "Kargo URL:       https://localhost:${KARGO_LOCAL_PORT}" \
+        "Kargo User:      admin" \
+        "Kargo Password:  ${KARGO_ADMIN_PASSWORD}"
 }
 
 # =============================================================================
@@ -105,7 +118,73 @@ cmd_status() {
             kubectl get applications -n "${ARGOCD_NAMESPACE}" 2>/dev/null || true
             argocd_info
         fi
+        if kubectl get namespace "${KARGO_NAMESPACE}" &>/dev/null; then
+            log_info "Kargo Pods:"
+            kubectl get pods -n "${KARGO_NAMESPACE}" -o wide 2>/dev/null || true
+            if kubectl get namespace "${KARGO_PROJECT}" &>/dev/null; then
+                log_info "Kargo Stages:"
+                kubectl get stages -n "${KARGO_PROJECT}" 2>/dev/null || true
+                log_info "Kargo Freight:"
+                kubectl get freight -n "${KARGO_PROJECT}" 2>/dev/null || true
+            fi
+            kargo_info
+        fi
     fi
+}
+
+# =============================================================================
+# TEARDOWN (resource-by-resource cleanup)
+# =============================================================================
+
+ask_confirm() {
+    local message="$1"
+    if [[ "${ASSUME_YES:-0}" == "1" ]]; then
+        return 0
+    fi
+    read -r -p "${message} [y/N]: " response
+    [[ "${response}" =~ ^[Yy]$ ]]
+}
+
+cmd_teardown() {
+    log_step "TEARDOWN: Starting resource-by-resource cleanup..."
+
+    log_info "==> Kargo (stages, project, namespaces, Helm release)"
+    if ask_confirm "Delete Kargo?"; then
+        kargo_delete
+    else
+        log_info "Skipping Kargo"
+    fi
+
+    log_info "==> ArgoCD (Applications, AppProject, credentials, installation)"
+    if ask_confirm "Delete ArgoCD?"; then
+        argocd_delete
+    else
+        log_info "Skipping ArgoCD"
+    fi
+
+    log_info "==> GitOps (gitops project in GitLab, residual Job/ConfigMap)"
+    if ask_confirm "Delete GitOps repository?"; then
+        gitops_delete_repository
+    else
+        log_info "Skipping GitOps"
+    fi
+
+    log_info "==> GitLab (namespace, PAT)"
+    if ask_confirm "Delete GitLab?"; then
+        gitlab_delete
+    else
+        log_info "Skipping GitLab"
+    fi
+
+    # Il cluster non rientra in ASSUME_YES: va chiesto sempre, o forzato con DELETE_CLUSTER=1.
+    log_info "==> Cluster"
+    if [[ "${DELETE_CLUSTER:-0}" == "1" ]] || ASSUME_YES=0 ask_confirm "Delete the entire cluster?"; then
+        cluster_delete
+    else
+        log_info "Skipping cluster deletion"
+    fi
+
+    log_success "TEARDOWN: Completed"
 }
 
 # =============================================================================
@@ -127,14 +206,25 @@ print_usage() {
     echo "  gitlab       Deploy GitLab CE + root user + PAT"
     echo "  gitops       Create gitops repo + push manifests"
     echo "  argocd       Deploy ArgoCD + App of Apps"
+    echo "  kargo        Deploy Kargo + credenziali git del progetto"
     echo "  portforward  Start port-forwarding"
     echo "  clean        Delete cluster"
     echo "  status       Show cluster status"
+    echo ""
+    echo "Cleanup:"
+    echo "  delete-kargo    Delete Kargo resources only"
+    echo "  delete-argocd   Delete ArgoCD resources only"
+    echo "  delete-gitops   Delete gitops repository only"
+    echo "  delete-gitlab   Delete GitLab resources only"
+    echo "  teardown        Interactive full cleanup (reverse of bootstrap)"
     echo ""
     echo "Examples:"
     echo "  $0 all                        # kind (default)"
     echo "  $0 --provider=gke all         # GKE"
     echo "  CLUSTER_PROVIDER=gke $0 all   # GKE via env var"
+    echo "  $0 teardown                   # interactive cleanup"
+    echo "  ASSUME_YES=1 $0 teardown      # non-interactive cleanup (cluster escluso)"
+    echo "  ASSUME_YES=1 DELETE_CLUSTER=1 $0 teardown   # cleanup completo, cluster incluso"
     echo ""
 }
 
@@ -158,7 +248,13 @@ main() {
         gitlab)      gitlab_deploy ;;
         gitops)      gitops_create_repository ;;
         argocd)      argocd_deploy ;;
+        kargo)       kargo_deploy ;;
+        delete-kargo)    kargo_delete ;;
+        delete-argocd)   argocd_delete ;;
+        delete-gitops)   gitops_delete_repository ;;
+        delete-gitlab)   gitlab_delete ;;
         portforward) cmd_portforward ;;
+        teardown)    cmd_teardown ;;
         clean)       cluster_delete ;;
         status)      cmd_status ;;
         all)
@@ -168,6 +264,7 @@ main() {
             gitlab_deploy
             gitops_create_repository
             argocd_deploy
+            kargo_deploy
             cmd_status
             echo ""
             read -r -p "Start port-forwarding now? [Y/n]: " response

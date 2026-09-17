@@ -1,0 +1,53 @@
+# PromotionTask: definisce il processo completo di promozione git-based.
+# Clona il repo GitOps, aggiorna l'immagine con kustomize, renderizza l'overlay dello stage,
+# committa il risultato e chiama ArgoCD per applicare la modifica.
+apiVersion: kargo.akuity.io/v1alpha1
+kind: PromotionTask
+metadata:
+  name: demo-promo-process
+  namespace: kargo-demo
+spec:
+  vars:
+    - name: gitopsRepo
+      value: http://gitlab.gitlab.svc.cluster.local/root/gitops.git
+    - name: imageRepo
+      value: public.ecr.aws/nginx/nginx
+  steps:
+    - uses: git-clone
+      config:
+        repoURL: ${{ vars.gitopsRepo }}
+        checkout:
+          - branch: main
+            path: ./src
+          - branch: stage/${{ ctx.stage }}
+            create: true
+            path: ./out
+    - uses: git-clear
+      config:
+        path: ./out
+    - uses: kustomize-set-image
+      as: update
+      config:
+        path: ./src/manifests/kargo-demo/base
+        images:
+          - image: ${{ vars.imageRepo }}
+            tag: ${{ imageFrom(vars.imageRepo).Tag }}
+    - uses: kustomize-build
+      config:
+        path: ./src/manifests/kargo-demo/stages/${{ ctx.stage }}
+        outPath: ./out/manifests.yaml
+    - uses: git-commit
+      as: commit
+      config:
+        path: ./out
+        message: ${{ task.outputs.update.commitMessage }}
+    - uses: git-push
+      config:
+        path: ./out
+    - uses: argocd-update
+      config:
+        apps:
+          - name: kargo-demo-${{ ctx.stage }}
+            sources:
+              - repoURL: ${{ vars.gitopsRepo }}
+                desiredRevision: ${{ task.outputs.commit.commit }}

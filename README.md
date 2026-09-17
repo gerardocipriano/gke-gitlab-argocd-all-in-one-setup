@@ -22,14 +22,21 @@ Supports both **kind** (local) and **GKE** (cloud) clusters with automatic manif
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Kubernetes Cluster                        │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────���───┐      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
 │  │   GitLab CE  │  │   ArgoCD     │  │  Your Apps   │      │
 │  │              │  │              │  │  (nginx...)  │      │
 │  │  - Root user │  │  - App of    │  │              │      │
 │  │  - PAT auth  │  │    Apps      │  │              │      │
 │  │  - gitops    │◄─┤  - Auto-sync │◄─┤              │      │
 │  │    repo      │  │              │  │              │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│  └──────────────┘  └──────┬───────┘  └──────────────┘      │
+│                           │                                 │
+│                    ┌──────v───────┐                         │
+│                    │    Kargo     │                         │
+│                    │  - Warehouse │                         │
+│                    │  - Stages    │                         │
+│                    │  - Promote   │                         │
+│                    └──────────────┘                         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -38,10 +45,23 @@ Supports both **kind** (local) and **GKE** (cloud) clusters with automatic manif
 - ✅ Add new app → create `inventory/myapp-application.yaml`
 - ✅ Modify GitLab → edit `manifests/gitlab/`
 - ✅ Modify ArgoCD → edit `manifests/argocd/`
+- ✅ Promote across environments → Kargo + render-to-branch
 
 ---
 
 ## 🚀 Quick Start
+
+### Percorso guidato (consigliato la prima volta)
+
+```bash
+./demo.sh                 # nove passi commentati, dal cluster vuoto alla promozione in prod
+./demo.sh --list          # elenco dei passi
+./demo.sh --from 6        # riprende dal passo 6
+./demo.sh --provider gke  # stesso percorso su GKE
+```
+
+Ogni passo spiega cosa sta per accadere, mostra il comando, chiede conferma e verifica il
+risultato. L'ultimo passo smonta tutto.
 
 ### kind (Local - Recommended for testing)
 
@@ -52,6 +72,7 @@ Supports both **kind** (local) and **GKE** (cloud) clusters with automatic manif
 # Access services
 # GitLab:  http://localhost:8080  (user: root, pass: Gk3B00tstr4p2025xZ)
 # ArgoCD:  https://localhost:8443 (user: admin, pass: from kubectl)
+# Kargo:   https://localhost:8081 (user: admin, pass: Karg0D3m02025xZ)
 ```
 
 ### GKE (Cloud)
@@ -77,6 +98,10 @@ CLUSTER_PROVIDER=gke ./deploy-k8s-bootstrap.sh all
 - `gcloud` CLI installed and authenticated
 - GCP project with billing enabled
 - `kubectl` (auto-installed if missing)
+- `helm` >= 3.13 (richiesto da Kargo)
+- Il control plane e' esposto solo via DNS endpoint (`--enable-dns-access`): l'accesso
+  dipende da IAM, non da liste di IP autorizzati. Serve il ruolo `container.developer`
+  o superiore sul progetto.
 
 ---
 
@@ -94,9 +119,17 @@ Commands:
   gitlab       Deploy GitLab CE + root user + PAT
   gitops       Create gitops repo + push manifests
   argocd       Deploy ArgoCD + App of Apps
+  kargo        Deploy Kargo + git credentials for the project
   portforward  Start port-forwarding
-  clean        Delete cluster
   status       Show cluster status
+
+Cleanup:
+  delete-kargo    Delete Kargo resources only
+  delete-argocd   Delete ArgoCD resources only
+  delete-gitops   Delete the gitops repository only
+  delete-gitlab   Delete GitLab resources only
+  teardown        Guided cleanup, one block at a time
+  clean           Delete the cluster
 ```
 
 ### Examples
@@ -118,9 +151,25 @@ Commands:
 # Check status
 ./deploy-k8s-bootstrap.sh status
 
-# Clean up
+# Smontaggio guidato, con una conferma per ogni componente
+./deploy-k8s-bootstrap.sh teardown
+
+# Smontaggio non interattivo, cluster escluso
+ASSUME_YES=1 ./deploy-k8s-bootstrap.sh teardown
+
+# Solo il cluster
 ./deploy-k8s-bootstrap.sh clean
 ```
+
+---
+
+## 🚀 Demo Kargo
+
+Kargo aggiunge alle pipeline GitOps la capacita' di promuovere artefatti tra ambienti (dev, staging, prod) con un meccanismo basato su git. Osserva un registry immagini, produce Freight quando scopre nuove versioni e le fa avanzare lungo una catena di Stage, scrivendo i manifest renderizzati su branch dedicati. ArgoCD legge da quei branch e applica le modifiche.
+
+La demo usa un'applicazione nginx con overlay kustomize: 1 replica in dev, 2 in staging, 3 in prod.
+
+Per il dettaglio completo vedi [docs/KARGO-DEMO.md](docs/KARGO-DEMO.md).
 
 ---
 
@@ -196,6 +245,14 @@ Commands:
 │   │   └── argocd-core.yaml         # ArgoCD project config
 │   ├── nginx/                       # Example app
 │   │   └── nginx-deployment.yaml
+│   ├── kargo-project/               # Kargo control-plane resources
+│   │   ├── project.yaml             # Project (creates namespace)
+│   │   ├── warehouse.yaml           # Image registry watcher
+│   │   ├── stages.yaml              # dev, staging, prod stages
+│   │   └── promotion-task.yaml      # 7-step promotion process
+│   ├── kargo-demo/                  # Application manifests
+│   │   ├── base/                    # Shared kustomize base
+│   │   └── stages/                  # Overlays per stage
 │   └── gitops-inventory/
 │       ├── app-of-apps.yaml         # Root ArgoCD Application
 │       └── inventory/
@@ -226,7 +283,7 @@ KIND_CLUSTER_NAME=gitops-lab           # Default: gitops-lab
 
 # GKE-specific
 GKE_PROJECT_ID=<project-id>            # Required for GKE
-GKE_CLUSTER_NAME=<cluster-name>        # Default: poc-redis-1
+GKE_CLUSTER_NAME=<cluster-name>        # Default: poc-gitops-1
 GKE_ZONE=<zone>                        # Default: us-central1-c
 GKE_MACHINE_TYPE=<type>                # Default: n2-standard-4
 GKE_NUM_NODES=<count>                  # Default: 2
@@ -313,6 +370,7 @@ gcloud config set project <PROJECT_ID>
 3. **GitLab** → Deploy GitLab CE, create root user, generate PAT
 4. **Gitops** → Create `gitops` repo, push all manifests (auto-discovered)
 5. **ArgoCD** → Install ArgoCD, configure repo credentials, deploy App of Apps
+6. **Kargo** → Install Kargo, create git credentials in project namespace
 
 ### Auto-Discovery
 
@@ -368,4 +426,5 @@ MIT License - feel free to use, modify, and distribute.
 - [kind](https://kind.sigs.k8s.io/) - Kubernetes IN Docker
 - [GitLab CE](https://about.gitlab.com/install/) - DevOps platform
 - [ArgoCD](https://argo-cd.readthedocs.io/) - GitOps continuous delivery
+- [Kargo](https://kargo.akuity.io/) - Multi-stage promotion pipeline for GitOps
 

@@ -1,0 +1,29 @@
+# Stage dev della demo Kargo.
+# La sorgente e' il branch stage/dev, che NON si modifica a mano: lo scrive Kargo a ogni
+# promozione con i manifest gia' renderizzati da kustomize.
+# L'annotazione authorized-stage autorizza lo Stage kargo-demo/dev a pilotare questa
+# Application: senza di essa lo step argocd-update viene rifiutato.
+# Nessun sync automatico: la sincronizzazione la richiede Kargo al termine della promozione.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kargo-demo-dev
+  namespace: argocd
+  annotations:
+    kargo.akuity.io/authorized-stage: kargo-demo:dev
+  labels:
+    app.kubernetes.io/name: kargo-demo-dev
+    app.kubernetes.io/component: application
+    kargo.akuity.io/stage: dev
+spec:
+  project: gitops
+  source:
+    repoURL: http://gitlab.gitlab.svc.cluster.local/root/gitops.git
+    targetRevision: stage/dev
+    path: .
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kargo-demo-dev
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true

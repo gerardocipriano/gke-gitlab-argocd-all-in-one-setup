@@ -1,0 +1,13 @@
+# Overlay di Kustomize per lo stage staging: due replica.
+# Consumato da Kargo PromotionTask tramite kustomize-build per generare i manifesti renderizzati.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+replicas:
+  - name: kargo-demo
+    count: 2
+labels:
+  - pairs:
+      kargo.akuity.io/stage: staging
+    includeSelectors: true

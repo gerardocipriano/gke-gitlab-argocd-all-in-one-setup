@@ -1,0 +1,14 @@
+# Warehouse: osserva il repository immagini public.ecr.aws/nginx/nginx
+# e scopre le tag che soddisfano il vincolo semver ^1.26.0.
+# Le Freight prodotte vengono consumate dagli Stage della pipeline di promozione.
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: kargo-demo
+  namespace: kargo-demo
+spec:
+  subscriptions:
+    - image:
+        repoURL: public.ecr.aws/nginx/nginx
+        constraint: "^1.26.0"
+        discoveryLimit: 5

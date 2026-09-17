@@ -1,0 +1,15 @@
+# Project Kargo: definisce il namespace kargo-demo e raggruppa Warehouse, Stage e PromotionTask.
+# Cluster-scoped, crea automaticamente il namespace indicato.
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Project
+metadata:
+  name: kargo-demo
+  annotations:
+    # Il namespace kargo-demo nasce da qui: le altre risorse del progetto devono attendere.
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  # Solo dev si promuove da solo: appena il Warehouse produce un Freight, parte la promozione.
+  # staging e prod restano manuali, sono il gesto da mostrare nella demo.
+  promotionPolicies:
+    - stage: dev
+      autoPromotionEnabled: true

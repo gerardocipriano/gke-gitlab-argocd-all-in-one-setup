@@ -218,6 +218,15 @@ gitlab_deploy() {
     log_success "GITLAB: Deployed and configured"
 }
 
+gitlab_delete() {
+    log_step "GITLAB: Deleting GitLab resources..."
+
+    log_info "Deleting GitLab namespace..."
+    kubectl delete namespace "${GITLAB_NAMESPACE}" --ignore-not-found 2>/dev/null || true
+
+    log_success "GITLAB: Resources deleted"
+}
+
 gitlab_info() {
     log_info "GitLab Access Information:"
     local pat

@@ -35,6 +35,9 @@ nodes:
   - containerPort: 30443
     hostPort: ${ARGOCD_LOCAL_PORT}
     protocol: TCP
+  - containerPort: 30081
+    hostPort: ${KARGO_LOCAL_PORT}
+    protocol: TCP
 EOF
 
     log_success "kind cluster '${KIND_CLUSTER_NAME}' created"

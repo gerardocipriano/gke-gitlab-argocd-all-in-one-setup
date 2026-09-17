@@ -1,0 +1,14 @@
+# Service ClusterIP che espone il Deployment kargo-demo sulla porta 80 del cluster.
+# Puntato sul pod etichettato app: kargo-demo.
+apiVersion: v1
+kind: Service
+metadata:
+  name: kargo-demo
+spec:
+  type: ClusterIP
+  selector:
+    app: kargo-demo
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP

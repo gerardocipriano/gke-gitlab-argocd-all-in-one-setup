@@ -44,5 +44,18 @@ prereq_check_all() {
     fi
     log_success "kubectl ready"
 
+    log_step "PREREQ: Checking Helm..."
+    if ! command_exists helm; then
+        log_error "Helm not found. Install: https://helm.sh/docs/intro/install/"
+        return 1
+    fi
+    local helm_version
+    helm_version=$(helm version --short 2>/dev/null | sed 's/^v//' | cut -d. -f1-2)
+    if [[ "$(printf '%s\n' "3.13" "${helm_version}" | sort -V | head -1)" != "3.13" ]]; then
+        log_error "Helm >= 3.13 required (found: ${helm_version}). Upgrade: https://helm.sh/docs/intro/install/"
+        return 1
+    fi
+    log_success "Helm ready: $(helm version --short)"
+
     log_success "PREREQUISITES [gke]: All checks passed"
 }
