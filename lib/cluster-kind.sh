@@ -63,3 +63,8 @@ cluster_verify() {
 cluster_info_label() {
     echo "kind (${KIND_CLUSTER_NAME})"
 }
+
+# Su kind non esistono nodi Spot: il selector lascerebbe i pod Pending.
+cluster_schedule_spot() {
+    :
+}

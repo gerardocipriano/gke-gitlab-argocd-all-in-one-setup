@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Purpose: GKE cluster create/delete/verify
+# Purpose: GKE Autopilot cluster create/delete/verify
 
 cluster_exists() {
     gcloud container clusters describe "${GKE_CLUSTER_NAME}" \
-        --project="${GKE_PROJECT_ID}" --zone="${GKE_ZONE}" &> /dev/null
+        --project="${GKE_PROJECT_ID}" --region="${GKE_REGION}" &> /dev/null
 }
 
 cluster_status() {
     if cluster_exists; then
         gcloud container clusters describe "${GKE_CLUSTER_NAME}" \
-            --project="${GKE_PROJECT_ID}" --zone="${GKE_ZONE}" --format='value(status)'
+            --project="${GKE_PROJECT_ID}" --region="${GKE_REGION}" --format='value(status)'
     else
         echo "NOT_FOUND"
     fi
@@ -20,13 +20,13 @@ cluster_get_credentials() {
     # Il control plane e' raggiungibile solo via DNS endpoint: niente IP pubblico da
     # autorizzare, l'accesso passa da IAM (ruolo container.developer o superiore).
     gcloud container clusters get-credentials "${GKE_CLUSTER_NAME}" \
-        --project="${GKE_PROJECT_ID}" --zone="${GKE_ZONE}" --dns-endpoint
+        --project="${GKE_PROJECT_ID}" --region="${GKE_REGION}" --dns-endpoint
     log_success "GKE credentials configured"
 }
 
 cluster_create() {
-    log_step "CLUSTER: Creating GKE cluster '${GKE_CLUSTER_NAME}'..."
-    log_info "Project: ${GKE_PROJECT_ID} | Zone: ${GKE_ZONE} | Nodes: ${GKE_NUM_NODES}"
+    log_step "CLUSTER: Creating GKE Autopilot cluster '${GKE_CLUSTER_NAME}'..."
+    log_info "Project: ${GKE_PROJECT_ID} | Region: ${GKE_REGION}"
 
     if cluster_exists; then
         local status
@@ -42,60 +42,60 @@ cluster_create() {
         fi
     fi
 
-    log_info "Creating GKE cluster (10-15 minutes)..."
-    gcloud beta container clusters create "${GKE_CLUSTER_NAME}" \
+    local private_nodes_flag="--no-enable-private-nodes"
+    [[ "${GKE_PRIVATE_NODES}" == "true" ]] && private_nodes_flag="--enable-private-nodes"
+
+    log_info "Creating GKE Autopilot cluster (10-15 minutes)..."
+    # monitoring/logging ridotti a SYSTEM: taglia i sample kube-state, cAdvisor e
+    # kubelet e i log dei workload. Managed Prometheus e Dataplane V2 observability
+    # non sono disabilitabili su Autopilot e restano ai default.
+    gcloud container clusters create-auto "${GKE_CLUSTER_NAME}" \
         --project "${GKE_PROJECT_ID}" \
-        --zone "${GKE_ZONE}" \
-        --tier "standard" \
-        --no-enable-basic-auth \
+        --region "${GKE_REGION}" \
         --release-channel "regular" \
-        --machine-type "${GKE_MACHINE_TYPE}" \
-        --image-type "COS_CONTAINERD" \
-        --disk-type "pd-balanced" \
-        --disk-size "${GKE_DISK_SIZE}" \
-        --metadata "disable-legacy-endpoints=true" \
         --service-account "${GKE_SERVICE_ACCOUNT}" \
-        --max-pods-per-node "32" \
-        --spot \
-        --num-nodes "${GKE_NUM_NODES}" \
-        --logging=SYSTEM,WORKLOAD \
-        --monitoring=SYSTEM,STORAGE,POD,DEPLOYMENT,STATEFULSET,DAEMONSET,HPA,CADVISOR,KUBELET \
-        --enable-ip-alias \
         --network "projects/${GKE_PROJECT_ID}/global/networks/${GKE_NETWORK}" \
         --subnetwork "projects/${GKE_PROJECT_ID}/regions/${GKE_REGION}/subnetworks/${GKE_SUBNETWORK}" \
         --cluster-secondary-range-name "pods" \
         --services-secondary-range-name "svc" \
-        --no-enable-intra-node-visibility \
-        --cluster-dns=clouddns \
-        --cluster-dns-scope=cluster \
-        --default-max-pods-per-node "110" \
-        --no-enable-ip-access \
-        --security-posture=standard \
-        --workload-vulnerability-scanning=disabled \
+        --logging=SYSTEM \
+        --monitoring=SYSTEM \
+        "${private_nodes_flag}" \
         --enable-dns-access \
         --no-enable-google-cloud-access \
-        --addons "HorizontalPodAutoscaling,HttpLoadBalancing,GcePersistentDiskCsiDriver" \
-        --enable-autoupgrade \
-        --enable-autorepair \
-        --max-surge-upgrade 1 \
-        --max-unavailable-upgrade 0 \
-        --binauthz-evaluation-mode=DISABLED \
-        --enable-managed-prometheus \
-        --enable-shielded-nodes \
-        --shielded-integrity-monitoring \
-        --no-shielded-secure-boot \
-        --node-locations "${GKE_ZONE}" \
         --quiet
 
-    log_success "GKE cluster created"
+    log_success "GKE Autopilot cluster created"
     cluster_get_credentials
+}
+
+# Su Autopilot lo Spot non e' un'opzione di cluster: va chiesto dai singoli pod.
+# I workload arrivano da manifest upstream e chart Helm che non espongono un
+# nodeSelector, quindi si patcha il pod template dopo l'installazione.
+cluster_schedule_spot() {
+    local namespace="$1"
+    local patch='{"spec":{"template":{"spec":{"nodeSelector":{"cloud.google.com/gke-spot":"true"}}}}}'
+
+    log_info "Moving workloads in namespace '${namespace}' to Spot nodes..."
+    local kind
+    for kind in deployment statefulset daemonset; do
+        local names
+        names=$(kubectl get "${kind}" -n "${namespace}" -o name 2>/dev/null) || continue
+        [[ -z "${names}" ]] && continue
+        local obj
+        while IFS= read -r obj; do
+            kubectl patch "${obj}" -n "${namespace}" --type=strategic -p "${patch}" &> /dev/null \
+                || log_warn "Spot patch failed: ${namespace}/${obj}"
+        done <<< "${names}"
+    done
+    log_success "Spot scheduling applied to '${namespace}'"
 }
 
 cluster_delete() {
     log_step "CLUSTER: Deleting GKE cluster '${GKE_CLUSTER_NAME}'..."
     if cluster_exists; then
         gcloud container clusters delete "${GKE_CLUSTER_NAME}" \
-            --project="${GKE_PROJECT_ID}" --zone="${GKE_ZONE}" --quiet
+            --project="${GKE_PROJECT_ID}" --region="${GKE_REGION}" --quiet
         log_success "GKE cluster deleted"
     else
         log_warn "GKE cluster does not exist"
@@ -122,10 +122,11 @@ cluster_verify() {
         return 1
     fi
     kubectl cluster-info
+    # Autopilot provisiona i nodi on demand: a cluster vuoto la lista e' vuota.
     kubectl get nodes -o wide
     log_success "VERIFY: Cluster is healthy"
 }
 
 cluster_info_label() {
-    echo "GKE (${GKE_PROJECT_ID}/${GKE_CLUSTER_NAME})"
+    echo "GKE Autopilot (${GKE_PROJECT_ID}/${GKE_CLUSTER_NAME})"
 }
