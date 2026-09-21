@@ -3,7 +3,11 @@
 # promozione con i manifest gia' renderizzati da kustomize.
 # L'annotazione authorized-stage autorizza lo Stage kargo-demo/dev a pilotare questa
 # Application: senza di essa lo step argocd-update viene rifiutato.
-# Nessun sync automatico: la sincronizzazione la richiede Kargo al termine della promozione.
+# selfHeal e' attivo solo su questo stage: una modifica fatta a mano nel cluster viene
+# riportata allo stato del branch entro pochi secondi. Su staging e prod resta disattivo,
+# quindi la sincronizzazione la richiede Kargo al termine della promozione.
+# prune resta false: il branch contiene i manifest di un solo stage e non deve poter
+# cancellare risorse che non conosce.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -25,5 +29,8 @@ spec:
     server: https://kubernetes.default.svc
     namespace: kargo-demo-dev
   syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
     syncOptions:
       - CreateNamespace=true

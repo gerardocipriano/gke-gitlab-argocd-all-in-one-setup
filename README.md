@@ -54,7 +54,7 @@ Supports both **kind** (local) and **GKE** (cloud) clusters with automatic manif
 ### Percorso guidato (consigliato la prima volta)
 
 ```bash
-./demo.sh                 # nove passi commentati, dal cluster vuoto alla promozione in prod
+./demo.sh                 # dieci passi commentati, dal cluster vuoto al self-heal del drift
 ./demo.sh --list          # elenco dei passi
 ./demo.sh --from 6        # riprende dal passo 6
 ./demo.sh --provider gke  # stesso percorso su GKE
@@ -284,9 +284,9 @@ KIND_CLUSTER_NAME=gitops-lab           # Default: gitops-lab
 # GKE-specific
 GKE_PROJECT_ID=<project-id>            # Required for GKE
 GKE_CLUSTER_NAME=<cluster-name>        # Default: poc-gitops-1
-GKE_ZONE=<zone>                        # Default: us-central1-c
-GKE_MACHINE_TYPE=<type>                # Default: n2-standard-4
-GKE_NUM_NODES=<count>                  # Default: 2
+GKE_REGION=<region>                    # Default: us-central1
+GKE_NETWORK=<vpc-name>                 # Default: injenia-test
+GKE_SUBNETWORK=<subnet-name>           # Default: injenia-gke-usc1
 ```
 
 ### Edit Configuration
@@ -397,9 +397,12 @@ ArgoCD's "App of Apps" pattern:
 - **Disk:** 20GB free space
 
 ### GKE (Cloud)
-- **Default:** 2x n2-standard-4 nodes (8 vCPU, 32GB RAM total)
-- **Cost:** ~$200/month (use spot instances to reduce)
-- **Disk:** 50GB per node
+- **Mode:** Autopilot regionale, nodi provisionati da GKE sui request dei pod
+- **Spot:** i componenti di piattaforma (GitLab, Argo CD, Kargo, cert-manager) vengono
+  patchati con `nodeSelector cloud.google.com/gke-spot=true` dopo il deploy
+- **Observability:** logging e monitoring limitati a `SYSTEM`; Managed Prometheus resta
+  attivo perche' su Autopilot non e' disattivabile
+- **Cost:** si paga per pod richiesti, non per nodo
 
 ---
 

@@ -48,6 +48,7 @@ STEPS=(
 "Kargo|Installa Kargo e crea le credenziali git del progetto. ArgoCD sincronizza Project, Warehouse, PromotionTask e i tre Stage.|kargo"
 "Accessi alle UI|Espone le tre interfacce e stampa le credenziali. E' il momento di guardare la catena dev, staging, prod nella UI di Kargo.|"
 "Promozione|Il Warehouse scopre i tag dell'immagine e crea un Freight. dev si promuove da solo, staging e prod si promuovono a mano: e' il gesto centrale della demo.|"
+"Drift e self-heal|Modifica a mano le repliche del Deployment in dev e guarda ArgoCD segnare OutOfSync e riportare lo stato a quello del branch. Serve a mostrare che la verita' e' il git, non la kubectl.|"
 "Pulizia|Smonta la demo risorsa per risorsa, con una conferma per ogni blocco. Il cluster viene cancellato solo se lo chiedi esplicitamente.|teardown"
 )
 
@@ -228,6 +229,62 @@ step_promotion() {
     log_info "non perche' qualcuno abbia toccato il cluster a mano."
 }
 
+step_drift() {
+    local ns="kargo-demo-dev" app="kargo-demo-dev" deploy="kargo-demo"
+    local desired drifted=4
+
+    desired=$(kubectl get deployment "${deploy}" -n "${ns}" \
+        -o jsonpath='{.spec.replicas}' 2>/dev/null || true)
+    if [[ -z "${desired}" ]]; then
+        log_warn "Deployment ${deploy} assente in ${ns}: serve almeno una promozione su dev (passo 8)."
+        return 0
+    fi
+
+    log_info "Stato dichiarato nel branch stage/dev: ${desired} replica/e."
+    log_info "Ora faccio la cosa che in GitOps non si fa: scalo a ${drifted} da riga di comando."
+    echo ""
+    kubectl scale deployment "${deploy}" -n "${ns}" --replicas="${drifted}"
+    echo ""
+
+    log_info "Osservo l'Application ArgoCD. Atteso: OutOfSync, poi ritorno a ${desired}."
+    log_info "Colonne: secondi, sync status, health, repliche desiderate nel cluster."
+    echo ""
+
+    local i sync health current saw_drift=0
+    for (( i = 0; i <= 90; i += 3 )); do
+        sync=$(kubectl get application "${app}" -n "${ARGOCD_NAMESPACE}" \
+            -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "?")
+        health=$(kubectl get application "${app}" -n "${ARGOCD_NAMESPACE}" \
+            -o jsonpath='{.status.health.status}' 2>/dev/null || echo "?")
+        current=$(kubectl get deployment "${deploy}" -n "${ns}" \
+            -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "?")
+        printf "  %3ds  %-12s %-10s repliche=%s\n" "${i}" "${sync:-?}" "${health:-?}" "${current}"
+
+        [[ "${sync}" == "OutOfSync" ]] && saw_drift=1
+        if [[ "${current}" == "${desired}" && "${sync}" == "Synced" ]] && (( saw_drift == 1 )); then
+            echo ""
+            log_success "Self-heal completato: ArgoCD ha riportato le repliche a ${desired}."
+            break
+        fi
+        sleep 3
+    done
+
+    current=$(kubectl get deployment "${deploy}" -n "${ns}" \
+        -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "?")
+    if [[ "${current}" != "${desired}" ]]; then
+        echo ""
+        log_warn "Repliche ancora a ${current}. Controlla che kargo-demo-dev abbia automated.selfHeal a true:"
+        log_warn "  kubectl get application ${app} -n ${ARGOCD_NAMESPACE} -o jsonpath='{.spec.syncPolicy}'"
+        return 0
+    fi
+
+    echo ""
+    log_info "Il punto: la modifica manuale e' durata pochi secondi e non ha lasciato traccia in git."
+    log_info "selfHeal e' attivo solo su dev. Su staging e prod la stessa modifica resterebbe,"
+    log_info "segnata come OutOfSync, finche' non arriva una promozione Kargo: e' una scelta,"
+    log_info "non una dimenticatura, perche' in produzione il rollback automatico va deciso."
+}
+
 # =============================================================================
 # MAIN
 # =============================================================================
@@ -268,7 +325,7 @@ fi
 source "${SCRIPT_DIR}/lib/gitlab.sh"
 
 log_header "DEMO KARGO [${PROVIDER}]"
-log_info "Nove passi, dal cluster vuoto alla promozione in prod."
+log_info "Dieci passi, dal cluster vuoto al self-heal del drift."
 log_info "A ogni passo: Invio per eseguire, s per saltare, q per uscire."
 if (( START_STEP > 1 )); then
     log_info "Parto dal passo ${START_STEP}, i precedenti li considero gia' fatti."
@@ -297,7 +354,8 @@ for (( step = START_STEP; step <= TOTAL_STEPS; step++ )); do
         6) run_deploy kargo;   verify_kargo ;;
         7) step_access ;;
         8) step_promotion ;;
-        9) run_deploy teardown ;;
+        9) step_drift ;;
+        10) run_deploy teardown ;;
     esac
 done
 
