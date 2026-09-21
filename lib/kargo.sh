@@ -16,7 +16,10 @@ kargo_generate_password_hash() {
 # Il chart di Kargo crea Certificate e Issuer per l'API e i webhook server: senza le CRD di
 # cert-manager l'installazione fallisce in fase di rendering.
 kargo_install_cert_manager() {
-    if kubectl get crd certificates.cert-manager.io &>/dev/null; then
+    # La presenza delle CRD non basta: sopravvivono a un helm uninstall, e senza il
+    # controller i Certificate di Kargo non vengono mai emessi (pod in ContainerCreating
+    # su secret kargo-api-cert assente). Si guarda il deployment.
+    if kubectl get deployment cert-manager -n "${CERT_MANAGER_NAMESPACE}" &>/dev/null; then
         log_info "cert-manager already installed"
         return 0
     fi
@@ -28,9 +31,14 @@ kargo_install_cert_manager() {
         --create-namespace \
         --version "${CERT_MANAGER_VERSION}" \
         --set crds.enabled=true \
+        --set global.leaderElection.namespace="${CERT_MANAGER_NAMESPACE}" \
         --wait \
         --timeout 10m
 
+    # leaderElection.namespace: di default cert-manager prende il lease in kube-system, che
+    # su GKE Autopilot e' un managed namespace e GKE Warden nega la scrittura. Senza questo
+    # flag il controller resta senza leadership, i Certificate non vengono emessi e i pod
+    # Kargo restano in ContainerCreating sul secret kargo-api-cert assente.
     kubectl wait --for=condition=Available \
         deployment/cert-manager-webhook \
         -n "${CERT_MANAGER_NAMESPACE}" \

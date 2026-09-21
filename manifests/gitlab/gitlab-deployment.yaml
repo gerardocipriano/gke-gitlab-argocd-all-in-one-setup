@@ -80,15 +80,24 @@ spec:
                 gitlab_rails['initial_shared_runners_registration_token'] = 'token'
                 gitlab_rails['gitlab_shell_ssh_port'] = 22
                 postgresql['shared_buffers'] = "256MB"
-                sidekiq['max_concurrency'] = 10
+                sidekiq['max_concurrency'] = 5
                 prometheus_monitoring['enable'] = false
+                # Omnibus dimensiona puma sul numero di CPU del nodo, non sul limit del
+                # container: su un nodo grosso apre piu' worker di quanti la memoria
+                # richiesta ne sostenga e il pod viene evicted. Due worker bastano.
+                puma['worker_processes'] = 2
+                registry['enable'] = false
+                gitlab_kas['enable'] = false
+          # requests == limits: su GKE Autopilot la request dimensiona il nodo, e un pod
+          # Burstable che sfora finisce evicted per memoria del nodo (visto a 5.4Gi con
+          # request 4Gi). 8Gi coprono l'avvio di Rails, Gitaly e Postgres insieme.
           resources:
             requests:
-              memory: "4Gi"
+              memory: "8Gi"
               cpu: "2"
             limits:
-              memory: "6Gi"
-              cpu: "4"
+              memory: "8Gi"
+              cpu: "2"
           volumeMounts:
             - name: gitlab-data
               mountPath: /var/opt/gitlab

@@ -240,6 +240,20 @@ print_usage() {
     echo ""
 }
 
+# Sposta i componenti di piattaforma su nodi Spot. No-op sul provider kind.
+# I workload creati da Argo CD (demo nginx, stage Kargo) non sono qui: una patch
+# diretta verrebbe riallineata al prossimo sync.
+deploy_spot_scheduling() {
+    case "$1" in
+        gitlab) cluster_schedule_spot "${GITLAB_NAMESPACE}" ;;
+        argocd) cluster_schedule_spot "${ARGOCD_NAMESPACE}" ;;
+        kargo)
+            cluster_schedule_spot "${CERT_MANAGER_NAMESPACE}"
+            cluster_schedule_spot "${KARGO_NAMESPACE}"
+            ;;
+    esac
+}
+
 # =============================================================================
 # MAIN ROUTER
 # =============================================================================
@@ -257,10 +271,10 @@ main() {
             cluster_create
             cluster_verify
             ;;
-        gitlab)      gitlab_deploy ;;
+        gitlab)      gitlab_deploy; deploy_spot_scheduling gitlab ;;
         gitops)      gitops_create_repository ;;
-        argocd)      argocd_deploy ;;
-        kargo)       kargo_deploy ;;
+        argocd)      argocd_deploy; deploy_spot_scheduling argocd ;;
+        kargo)       kargo_deploy; deploy_spot_scheduling kargo ;;
         delete-kargo)    kargo_delete ;;
         delete-argocd)   argocd_delete ;;
         delete-gitops)   gitops_delete_repository ;;
@@ -274,9 +288,12 @@ main() {
             cluster_create
             cluster_verify
             gitlab_deploy
+            deploy_spot_scheduling gitlab
             gitops_create_repository
             argocd_deploy
+            deploy_spot_scheduling argocd
             kargo_deploy
+            deploy_spot_scheduling kargo
             cmd_status
             echo ""
             read -r -p "Start port-forwarding now? [Y/n]: " response
