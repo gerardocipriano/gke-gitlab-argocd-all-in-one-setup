@@ -1,5 +1,5 @@
-# Deployment dell'applicazione demo: un singolo nginx esposto sulla porta 80.
-# Il tag immagine e' gestito via kustomize e viene aggiornato ad ogni promozione Kargo.
+# podinfo: la UI mostra versione e messaggio, /version risponde con la versione in esecuzione.
+# Il tag immagine lo riscrive Kargo a ogni promozione, il colore lo decide l'overlay dello stage.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -15,10 +15,16 @@ spec:
         app: kargo-demo
     spec:
       containers:
-        - name: nginx
-          image: public.ecr.aws/nginx/nginx:1.26.0
+        - name: podinfo
+          image: ghcr.io/stefanprodan/podinfo:6.9.4
           ports:
-            - containerPort: 80
+            - name: http
+              containerPort: 9898
+          env:
+            - name: PODINFO_UI_MESSAGE
+              value: "GitOps dal vivo"
+            - name: PODINFO_UI_COLOR
+              value: "#34577c"
           resources:
             requests:
               cpu: 50m
@@ -28,7 +34,11 @@ spec:
               memory: 128Mi
           readinessProbe:
             httpGet:
-              path: /
-              port: 80
-            initialDelaySeconds: 5
+              path: /readyz
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
             periodSeconds: 10

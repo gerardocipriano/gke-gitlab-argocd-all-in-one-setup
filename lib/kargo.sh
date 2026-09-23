@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Purpose: Kargo install, password hash, git credentials, and info
 
-# Il binario docker puo' esserci con il daemon spento: si controlla docker info, non la
+# Il binario docker può esserci con il daemon spento: si controlla docker info, non la
 # presenza del comando, altrimenti l'hash esce vuoto e set -e chiude lo script in silenzio.
 kargo_generate_password_hash() {
     if command_exists htpasswd; then
@@ -44,7 +44,7 @@ kargo_install_cert_manager() {
         --timeout 10m
 
     # leaderElection.namespace: di default cert-manager prende il lease in kube-system, che
-    # su GKE Autopilot e' un managed namespace e GKE Warden nega la scrittura. Senza questo
+    # su GKE Autopilot è un managed namespace e GKE Warden nega la scrittura. Senza questo
     # flag il controller resta senza leadership, i Certificate non vengono emessi e i pod
     # Kargo restano in ContainerCreating sul secret kargo-api-cert assente.
     kubectl wait --for=condition=Available \
@@ -110,57 +110,53 @@ kargo_deploy() {
     log_success "KARGO: Fully deployed"
 }
 
+# Le credenziali git devono esistere prima del primo Freight, altrimenti la promozione
+# automatica di dev fallisce sul clone e non viene ritentata. Per questo il namespace del
+# progetto si crea qui, con l'etichetta che Kargo richiede per adottarlo, e il secret ci va
+# dentro prima che ArgoCD crei Project e Warehouse.
 kargo_create_git_credentials() {
-    # kargo-project ha tentato il sync prima che esistessero le CRD di Kargo ed e' in retry
-    # con backoff fino a 2 minuti: si chiede un sync subito, perche' le credenziali devono
-    # esistere prima del primo Freight, altrimenti la promozione automatica di dev fallisce
-    # sul clone e non viene ritentata.
-    kubectl patch application kargo-project -n "${ARGOCD_NAMESPACE}" --type merge \
-        -p '{"operation":{"initiatedBy":{"username":"bootstrap"},"sync":{}}}' &>/dev/null || true
-
-    log_info "Waiting for Kargo project namespace to be created..."
-    local elapsed=0
-    local interval=5
-    while [[ ${elapsed} -lt 300 ]]; do
-        if kubectl get namespace "${KARGO_PROJECT}" &>/dev/null; then
-            break
-        fi
-        sleep ${interval}
-        elapsed=$((elapsed + interval))
-    done
-
-    if ! kubectl get namespace "${KARGO_PROJECT}" &>/dev/null; then
-        log_error "Namespace del progetto '${KARGO_PROJECT}' assente dopo 300s: controlla l'Application kargo-project"
-        return 1
-    fi
-
     local pat
     pat=$(gitlab_get_pat)
     if [[ -z "${pat}" ]]; then
-        log_warn "No GitLab PAT found, skipping Kargo git credentials"
-        return 0
+        log_error "PAT GitLab assente: le credenziali git di Kargo non si possono creare"
+        return 1
     fi
 
-    log_info "Creating git credentials secret in Kargo project..."
+    log_info "Creating project namespace and git credentials before the Project..."
+    kubectl create namespace "${KARGO_PROJECT}" --dry-run=client -o yaml | kubectl apply -f -
+    kubectl label namespace "${KARGO_PROJECT}" kargo.akuity.io/project=true --overwrite
+
     kubectl create secret generic gitops-repo \
         --namespace "${KARGO_PROJECT}" \
-        --from-literal=repoURL="http://gitlab.gitlab.svc.cluster.local/root/gitops.git" \
+        --from-literal=repoURL="http://gitlab.${GITLAB_NAMESPACE}.svc.cluster.local/root/gitops.git" \
         --from-literal=username=oauth2 \
         --from-literal=password="${pat}" \
         --dry-run=client -o yaml | kubectl apply -f -
+    kubectl label secret gitops-repo -n "${KARGO_PROJECT}" kargo.akuity.io/cred-type=git --overwrite
 
-    kubectl label secret gitops-repo \
-        -n "${KARGO_PROJECT}" \
-        kargo.akuity.io/cred-type=git \
-        --overwrite
+    # kargo-project ha tentato il sync prima che esistessero le CRD ed è in retry con backoff
+    # fino a 2 minuti: si chiede il sync subito.
+    kubectl patch application kargo-project -n "${ARGOCD_NAMESPACE}" --type merge \
+        -p '{"operation":{"initiatedBy":{"username":"bootstrap"},"sync":{}}}' &>/dev/null || true
 
-    log_success "Kargo git credentials created"
+    log_info "Waiting for the Kargo Stages..."
+    local elapsed=0
+    while (( elapsed < 300 )); do
+        [[ "$(kubectl get stages -n "${KARGO_PROJECT}" --no-headers 2>/dev/null | wc -l)" -ge 3 ]] && break
+        sleep 5
+        elapsed=$(( elapsed + 5 ))
+    done
+    if (( elapsed >= 300 )); then
+        log_error "Stage Kargo assenti dopo 300s: controlla l'Application kargo-project"
+        return 1
+    fi
+    log_success "Kargo git credentials created, Project and Stages synced"
 }
 
 kargo_delete() {
     log_step "KARGO: Deleting Kargo resources..."
 
-    # Se ArgoCD e' ancora vivo, la root Application "apps" ricrea queste Application al
+    # Se ArgoCD è ancora vivo, la root Application "apps" ricrea queste Application al
     # primo sync: per una rimozione definitiva togliere i manifest dal repo gitops.
     if kubectl get application apps -n "${ARGOCD_NAMESPACE}" &>/dev/null; then
         log_warn "ArgoCD is still running: the app-of-apps will recreate these Applications"

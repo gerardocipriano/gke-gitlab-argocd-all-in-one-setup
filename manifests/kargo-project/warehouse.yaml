@@ -1,16 +1,24 @@
-# Warehouse: osserva il repository immagini public.ecr.aws/nginx/nginx
-# e scopre le tag che soddisfano il vincolo semver ~1.26.0.
-# Le Freight prodotte vengono consumate dagli Stage della pipeline di promozione.
+# Warehouse con due sottoscrizioni: ogni Freight porta insieme un tag di podinfo e un commit
+# della configurazione. Una nuova immagine o un commit sotto manifests/kargo-demo producono
+# ciascuno un Freight nuovo, che segue la stessa catena di promozione.
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Warehouse
 metadata:
   name: kargo-demo
   namespace: kargo-demo
 spec:
-  # Tilde e non caret: ~1.26.0 resta nella serie 1.26, mentre ^1.26.0 prenderebbe
-  # l'ultima 1.x disponibile e la demo partirebbe gia' dall'ultima versione.
   subscriptions:
+    # Tilde e non caret: ~6.9.0 resta nella serie 6.9, mentre ^6.9.0 prenderebbe l'ultima 6.x
+    # e la demo partirebbe già dall'ultima versione.
     - image:
-        repoURL: public.ecr.aws/nginx/nginx
-        constraint: "~1.26.0"
+        repoURL: ghcr.io/stefanprodan/podinfo
+        constraint: "~6.9.0"
+        discoveryLimit: 5
+    # includePaths: solo i manifest dell'app. Un commit sulle risorse Kargo (per esempio questo
+    # file) non deve diventare un Freight.
+    - git:
+        repoURL: http://gitlab.gitlab.svc.cluster.local/root/gitops.git
+        branch: main
+        includePaths:
+          - manifests/kargo-demo
         discoveryLimit: 5

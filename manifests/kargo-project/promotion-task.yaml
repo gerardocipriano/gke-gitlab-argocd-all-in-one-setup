@@ -1,6 +1,5 @@
-# PromotionTask: definisce il processo completo di promozione git-based.
-# Clona il repo GitOps, aggiorna l'immagine con kustomize, renderizza l'overlay dello stage,
-# committa il risultato e chiama ArgoCD per applicare la modifica.
+# PromotionTask: clona il repo al commit del Freight, imposta il tag dell'immagine, renderizza
+# l'overlay dello stage, committa il risultato sul branch dello stage e chiede il sync ad ArgoCD.
 apiVersion: kargo.akuity.io/v1alpha1
 kind: PromotionTask
 metadata:
@@ -11,13 +10,15 @@ spec:
     - name: gitopsRepo
       value: http://gitlab.gitlab.svc.cluster.local/root/gitops.git
     - name: imageRepo
-      value: public.ecr.aws/nginx/nginx
+      value: ghcr.io/stefanprodan/podinfo
   steps:
     - uses: git-clone
       config:
         repoURL: ${{ vars.gitopsRepo }}
         checkout:
-          - branch: main
+          # Il commit di configurazione contenuto nel Freight, non la punta di main: promuovere
+          # in prod lo stesso Freight di staging deve dare lo stesso risultato.
+          - commit: ${{ commitFrom(vars.gitopsRepo).ID }}
             path: ./src
           - branch: stage/${{ ctx.stage }}
             create: true
@@ -41,8 +42,8 @@ spec:
       config:
         path: ./out
         # Il default (outputs.update.commitMessage) cita il path in ./src, che su questo
-        # branch non esiste: il messaggio deve dire cosa e' stato promosso e dove.
-        message: "promote nginx ${{ imageFrom(vars.imageRepo).Tag }} to ${{ ctx.stage }} (freight ${{ ctx.targetFreight.name }})"
+        # branch non esiste: il messaggio deve dire cosa è stato promosso e dove.
+        message: "promote podinfo ${{ imageFrom(vars.imageRepo).Tag }} + config ${{ commitFrom(vars.gitopsRepo).ID[0:8] }} to ${{ ctx.stage }}"
     - uses: git-push
       config:
         path: ./out
