@@ -1,21 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# =============================================================================
-# KUBERNETES BOOTSTRAP - GitLab + ArgoCD (App of Apps)
-# Supports: kind (local) or GKE (cloud)
-#
-# Usage:
-#   ./deploy-k8s-bootstrap.sh [--provider kind|gke] [COMMAND]
-#   CLUSTER_PROVIDER=gke ./deploy-k8s-bootstrap.sh all
-#
-# Bootstrap flow:
-#   1. prereq  → install tools
-#   2. cluster → create K8s cluster (kind or GKE)
-#   3. gitlab  → deploy GitLab CE + root user + PAT
-#   4. gitops  → create repo + push all manifests (auto-discovered)
-#   5. argocd  → install ArgoCD + repo creds + App of Apps
-# =============================================================================
+# bootstrap.sh - piattaforma GitOps su kind o GKE: GitLab, ArgoCD (App of Apps), Kargo.
+# Uso: ./bootstrap.sh [--provider kind|gke] [COMMAND]   (help per l'elenco dei comandi)
+# Passi di all: prereq, cluster, gitlab, gitops, argocd, kargo. demo.sh li usa per prepare.
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
