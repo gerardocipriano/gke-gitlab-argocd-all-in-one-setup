@@ -5,14 +5,75 @@
 PALCO_DIR=""
 PALCO_PORT=""
 PALCO_PIDS=()
-PALCO_URLS='{}'
+
+# Stato del banco: demo.sh aggiorna questi campi e palco_write li scrive in state.json.
+# mode: prepare | ready | present | end
+PALCO_MODE="present"
+PALCO_CHAPTER=""
+PALCO_PHASE="intro"
+PALCO_QUESTION=0
+PALCO_NOTE=""
+PALCO_NEXT=""
+PALCO_NOTES='[]'
+PALCO_CREDS='{}'
+PALCO_PREP='[]'
+PALCO_APPS='{}'
+PALCO_PROMPT_ID=0
+PALCO_PROMPT_U=false
+PALCO_TOKEN=""
+
+# Server del banco: file statici più POST /cmd, con cui i pulsanti del banco premono Invio al
+# posto del terminale. Ascolta solo su 127.0.0.1; il token e il controllo dell'Origin impediscono
+# a un'altra pagina aperta nel browser di comandare la demo.
+readonly PALCO_SERVER_PY='
+import http.server, json, os, sys
+root, port, token = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+allowed = {"http://127.0.0.1:%d" % port, "http://localhost:%d" % port}
+
+class Handler(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, *a, **k):
+        super().__init__(*a, directory=root, **k)
+
+    def log_message(self, *a):
+        pass
+
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
+    def do_POST(self):
+        if self.path != "/cmd":
+            return self.send_error(404)
+        if self.headers.get("Origin", "") not in allowed:
+            return self.send_error(403)
+        size = int(self.headers.get("Content-Length") or 0)
+        if size > 1024:
+            return self.send_error(413)
+        try:
+            body = json.loads(self.rfile.read(size))
+            prompt = int(body.get("prompt", 0))
+        except Exception:
+            return self.send_error(400)
+        if body.get("token") != token:
+            return self.send_error(403)
+        if body.get("key") not in ("enter", "u", "q"):
+            return self.send_error(403)
+        tmp = os.path.join(root, "cmd.tmp")
+        with open(tmp, "w") as f:
+            f.write("%d %s\n" % (prompt, body["key"]))
+        os.replace(tmp, os.path.join(root, "cmd"))
+        self.send_response(204)
+        self.end_headers()
+
+http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+'
 
 # ---------------------------------------------------------------------------
 # Server e stato
 # ---------------------------------------------------------------------------
 
-# Cartella privata: state.json contiene gli URL locali, e l'HTML resta servito solo su
-# 127.0.0.1.
+# Cartella privata: state.json contiene le credenziali delle UI, e il server ascolta solo
+# su 127.0.0.1.
 palco_start() {
     local template="$1"
     PALCO_DIR=$(mktemp -d "${TMPDIR:-/tmp}/palco-XXXXXX")
@@ -20,9 +81,11 @@ palco_start() {
     cp "${template}" "${PALCO_DIR}/index.html"
     palco_declared_replicas > "${PALCO_DIR}/declared.json"
     echo '{}' > "${PALCO_DIR}/live.json"
+    echo '{}' > "${PALCO_DIR}/apps.json"
 
     PALCO_PORT=$(find_free_port "${PALCO_LOCAL_PORT:-8090}") || return 1
-    python3 -m http.server "${PALCO_PORT}" --bind 127.0.0.1 --directory "${PALCO_DIR}" \
+    PALCO_TOKEN=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
+    python3 -c "${PALCO_SERVER_PY}" "${PALCO_DIR}" "${PALCO_PORT}" "${PALCO_TOKEN}" \
         > "${PALCO_DIR}/server.log" 2>&1 &
     PALCO_PIDS+=($!)
 
@@ -43,26 +106,84 @@ palco_url() {
     echo "http://127.0.0.1:${PALCO_PORT}/"
 }
 
-palco_set_urls() {
-    PALCO_URLS=$(jq -cn --arg g "$1" --arg a "$2" --arg k "$3" '{gitlab: $g, argocd: $a, kargo: $k}')
+# Scrittura atomica: il browser non deve mai leggere un JSON a metà.
+palco_write() {
+    [[ -n "${PALCO_DIR}" && -d "${PALCO_DIR}" ]] || return 0
+    jq -n --arg mode "${PALCO_MODE}" --arg c "${PALCO_CHAPTER}" --arg p "${PALCO_PHASE}" \
+        --argjson q "${PALCO_QUESTION}" --arg n "${PALCO_NOTE}" --arg next "${PALCO_NEXT}" \
+        --argjson notes "${PALCO_NOTES}" --argjson creds "${PALCO_CREDS}" --argjson prep "${PALCO_PREP}" \
+        --arg prov "${PROVIDER:-}" --argjson pid "${PALCO_PROMPT_ID}" --argjson pu "${PALCO_PROMPT_U}" \
+        --arg tok "${PALCO_TOKEN}" --argjson apps "${PALCO_APPS}" \
+        '{mode: $mode, chapter: $c, phase: $p, question: $q, note: $n, next: $next, notes: $notes,
+          creds: $creds, urls: ($creds | map_values(.url)), prep: $prep, provider: $prov,
+          prompt: {id: $pid, u: $pu}, token: $tok, apps: $apps, updated: now}' \
+        > "${PALCO_DIR}/state.json.tmp" && mv "${PALCO_DIR}/state.json.tmp" "${PALCO_DIR}/state.json"
 }
+
+palco_mode() { PALCO_MODE="$1"; palco_write; }
 
 # Uso: palco_state CAPITOLO FASE [INDICE_DOMANDA] [NOTA]
-# Scrittura atomica: il browser non deve mai leggere un JSON a meta'.
 palco_state() {
-    [[ -n "${PALCO_DIR}" ]] || return 0
-    local chapter="$1" phase="$2" question="${3:-0}" note="${4:-}"
-    jq -n --arg c "${chapter}" --arg p "${phase}" --argjson q "${question}" --arg n "${note}" \
-        --arg prov "${PROVIDER:-}" --argjson urls "${PALCO_URLS}" \
-        '{chapter: $c, phase: $p, question: $q, note: $n, provider: $prov, urls: $urls, updated: now}' \
-        > "${PALCO_DIR}/state.json.tmp" && mv "${PALCO_DIR}/state.json.tmp" "${PALCO_DIR}/state.json"
+    PALCO_MODE="present"
+    PALCO_CHAPTER="$1"
+    PALCO_PHASE="$2"
+    PALCO_QUESTION="${3:-0}"
+    PALCO_NOTE="${4:-}"
+    palco_write
 }
 
-palco_note() {
-    [[ -n "${PALCO_DIR}" && -f "${PALCO_DIR}/state.json" ]] || return 0
-    jq --arg n "$1" '.note = $n | .updated = now' "${PALCO_DIR}/state.json" \
-        > "${PALCO_DIR}/state.json.tmp" && mv "${PALCO_DIR}/state.json.tmp" "${PALCO_DIR}/state.json"
+palco_note() { PALCO_NOTE="$1"; palco_write; }
+
+# Il prossimo gesto di chi presenta, mostrato nella barra "Prossimo passo" del banco.
+palco_next() { PALCO_NEXT="$1"; palco_write; }
+
+# Apre un nuovo prompt: il banco può rispondere solo a questo id, così un doppio clic o
+# un comando arrivato in ritardo non fa avanzare due passi.
+palco_prompt_open() {
+    PALCO_PROMPT_ID=$(( PALCO_PROMPT_ID + 1 ))
+    [[ "$1" == *"scrivi u"* ]] && PALCO_PROMPT_U=true || PALCO_PROMPT_U=false
+    rm -f "${PALCO_DIR}/cmd" 2>/dev/null
+    PALCO_NEXT="$1"
+    palco_write
 }
+
+palco_prompt_close() { PALCO_NEXT=""; PALCO_PROMPT_U=false; palco_write; }
+
+# Stampa il tasto premuto dal banco per il prompt corrente (enter, u, q) e consuma il comando.
+palco_take_cmd() {
+    local f="${PALCO_DIR}/cmd" id key
+    [[ -n "${PALCO_DIR}" && -f "${f}" ]] || return 1
+    read -r id key < "${f}" || true
+    rm -f "${f}"
+    [[ "${id}" == "${PALCO_PROMPT_ID}" ]] || return 1
+    echo "${key}"
+}
+
+palco_notes_reset() { PALCO_NOTES='[]'; }
+
+palco_notes_add() {
+    PALCO_NOTES=$(jq -c --arg l "$1" '. + [$l]' <<< "${PALCO_NOTES}")
+    palco_write
+}
+
+# Uso: palco_set_creds NOME URL UTENTE PASSWORD  (una chiamata per UI)
+palco_set_creds() {
+    PALCO_CREDS=$(jq -c --arg k "$1" --arg u "$2" --arg user "$3" --arg pw "$4" \
+        '. + {($k): {url: $u, user: $user, password: $pw}}' <<< "${PALCO_CREDS}")
+    palco_write
+}
+
+# Porte locali delle app dei tre stage. Il collector gira in un processo già avviato, quindi
+# le legge da file a ogni giro.
+palco_set_apps() {
+    [[ -n "${PALCO_DIR}" ]] || return 0
+    jq -n --arg d "$1" --arg s "$2" --arg p "$3" '{dev: $d, staging: $s, prod: $p}' > "${PALCO_DIR}/apps.json"
+    PALCO_APPS=$(jq -c 'map_values(if . == "" then "" else "http://localhost:" + . end)' "${PALCO_DIR}/apps.json")
+    palco_write
+}
+
+# Uso: palco_set_prep JSON  (array di {title, minutes, status, started})
+palco_set_prep() { PALCO_PREP="$1"; palco_write; }
 
 # Repliche dichiarate negli overlay: servono alla dashboard per colorare quelle in eccesso
 # quando qualcuno scala a mano.
@@ -80,6 +201,9 @@ palco_declared_replicas() {
 # Collector
 # ---------------------------------------------------------------------------
 
+# Namespace mostrati nella vista Cluster, nell'ordine in cui compaiono.
+PALCO_NAMESPACES='["gitlab","argocd","kargo","cert-manager","kargo-demo","kargo-demo-dev","kargo-demo-staging","kargo-demo-prod","nginx"]'
+
 readonly PALCO_JQ='
 ($k[0].items // []) as $all
 | ($all | map(select(.kind == "Freight"))) as $fr
@@ -94,7 +218,8 @@ readonly PALCO_JQ='
       name: ($wh.metadata.name // ""),
       constraint: ($wh.spec.subscriptions[0].image.constraint // ""),
       freight: ($fr | sort_by(.metadata.creationTimestamp) | reverse
-        | map({name: .metadata.name, alias: (.alias // ""), tag: (.images[0].tag // ""), created: .metadata.creationTimestamp}))
+        | map({name: .metadata.name, alias: (.alias // ""), tag: (.images[0].tag // ""),
+               commit: ((.commits[0].id // "")[0:7]), created: .metadata.creationTimestamp}))
     },
     stages: (["dev", "staging", "prod"] | map(. as $s
       | ($all | map(select(.kind == "Stage" and .metadata.name == $s)) | .[0] // {}) as $st
@@ -105,6 +230,8 @@ readonly PALCO_JQ='
           name: $s,
           freight: ($fm[$fn].alias // ""),
           tag: ($fm[$fn].images[0].tag // ""),
+          config: (($fm[$fn].commits[0].id // "")[0:7]),
+          app: ($appv[0][$s] // null),
           health: ($st.status.health.status // ""),
           ready: ($dep.status.readyReplicas // 0),
           desired: ($dep.spec.replicas // 0),
@@ -119,6 +246,35 @@ readonly PALCO_JQ='
       | map({name: .metadata.name, stage: .spec.stage,
              freight: ($fm[.spec.freight].alias // (.spec.freight // "")[0:7]),
              phase: (.status.phase // "Pending"), created: .metadata.creationTimestamp})),
+    cluster: {
+      nodes: ($n[0].items // [] | map({
+        name: (.metadata.name | sub("^gk3-[^-]+-[^-]+-[0-9]+-"; "")),
+        type: (.metadata.labels["node.kubernetes.io/instance-type"] // ""),
+        spot: (.metadata.labels["cloud.google.com/gke-spot"] == "true"),
+        ready: ([.status.conditions[]? | select(.type == "Ready" and .status == "True")] | length > 0)
+      })),
+      namespaces: ($nsl | map(. as $ns | {
+        name: $ns,
+        pods: ($p[0].items // [] | map(select(.metadata.namespace == $ns and .status.phase != "Succeeded")) | map({
+          name: .metadata.name,
+          workload: (.metadata.labels["app.kubernetes.io/name"] // .metadata.labels.app // (.metadata.name
+            | sub("-[a-z0-9]{8,10}-[a-z0-9]{5}$"; "") | sub("-[a-z0-9]{5}$"; "") | sub("-[0-9]+$"; ""))),
+          status: (if .metadata.deletionTimestamp then "deleting"
+                   elif ([.status.containerStatuses[]?.state.waiting.reason // empty]
+                         | any(test("CrashLoop|ImagePull|ErrImage|Error"))) or .status.phase == "Failed" then "failed"
+                   elif .status.phase == "Running" and ([.status.containerStatuses[]? | .ready] | all) then "ready"
+                   else "starting" end),
+          restarts: ([.status.containerStatuses[]?.restartCount] | add // 0)
+        }) | sort_by(.workload, .name))
+      })),
+      kargo: {
+        warehouses: ($all | map(select(.kind == "Warehouse")) | length),
+        stages: ($all | map(select(.kind == "Stage")) | length),
+        freight: ($fr | length),
+        promotions: ($all | map(select(.kind == "Promotion")) | length)
+      },
+      applications: ($a[0].items // [] | length)
+    },
     events: ($e[0].items // [] | map(select(.metadata.namespace | startswith("kargo-demo-")))
       | sort_by(.lastTimestamp // .eventTime // "") | .[-5:]
       | map((((.lastTimestamp // .eventTime // "") | sub("\\.[0-9]+"; "") | try (fromdateiso8601 | strflocaltime("%H:%M:%S")) catch "")) + " "
@@ -132,8 +288,20 @@ palco_collect_once() {
     kubectl get applications -n "${ARGOCD_NAMESPACE}" -o json > "${d}/a.json" 2>/dev/null || echo '{}' > "${d}/a.json"
     kubectl get deployments -A -l kargo.akuity.io/stage -o json > "${d}/d.json" 2>/dev/null || echo '{}' > "${d}/d.json"
     kubectl get events -A --field-selector reason=ScalingReplicaSet -o json > "${d}/e.json" 2>/dev/null || echo '{}' > "${d}/e.json"
+    kubectl get nodes -o json > "${d}/n.json" 2>/dev/null || echo '{}' > "${d}/n.json"
+    kubectl get pods -A -o json > "${d}/p.json" 2>/dev/null || echo '{}' > "${d}/p.json"
+    local s port av='{}' resp
+    for s in dev staging prod; do
+        port=$(jq -r --arg s "${s}" '.[$s] // ""' "${d}/apps.json" 2>/dev/null)
+        [[ -n "${port}" ]] || continue
+        resp=$(curl -s -m 2 "http://127.0.0.1:${port}/" 2>/dev/null | jq -c '{version, message}' 2>/dev/null) || resp=""
+        [[ -n "${resp}" ]] && av=$(jq -c --arg s "${s}" --argjson r "${resp}" '. + {($s): $r}' <<< "${av}")
+    done
+    echo "${av}" > "${d}/appv.json"
     jq -n --slurpfile k "${d}/k.json" --slurpfile a "${d}/a.json" --slurpfile d "${d}/d.json" \
-        --slurpfile e "${d}/e.json" --slurpfile decl "${d}/declared.json" "${PALCO_JQ}" \
+        --slurpfile e "${d}/e.json" --slurpfile decl "${d}/declared.json" \
+        --slurpfile n "${d}/n.json" --slurpfile p "${d}/p.json" --slurpfile appv "${d}/appv.json" \
+        --argjson nsl "${PALCO_NAMESPACES}" "${PALCO_JQ}" \
         > "${d}/live.json.tmp" 2>/dev/null && mv "${d}/live.json.tmp" "${d}/live.json"
 }
 
@@ -251,7 +419,7 @@ kargo_freight_tag() {
     kubectl get freight "$1" -n "${KARGO_PROJECT}" -o jsonpath='{.images[0].tag}' 2>/dev/null
 }
 
-# Freight dal piu' recente al piu' vecchio, un nome per riga.
+# Freight dal più recente al più vecchio, un nome per riga.
 kargo_freight_by_age() {
     kubectl get freight -n "${KARGO_PROJECT}" -o json 2>/dev/null |
         jq -r '.items | sort_by(.metadata.creationTimestamp) | reverse | .[].metadata.name'

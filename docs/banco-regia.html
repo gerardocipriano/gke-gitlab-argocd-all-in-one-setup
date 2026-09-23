@@ -34,6 +34,7 @@
     --ok: #74c088; --ok-soft: #16301d; --shadow: 0 1px 2px rgba(0, 0, 0, .4);
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { margin: 0; }
   body {
     background: var(--ground); color: var(--body);
@@ -162,6 +163,11 @@
   .chip.new { animation: pop 3s ease-out; }
   @keyframes pop { 0% { transform: scale(.6); background: var(--accent); color: var(--panel); } 15% { transform: scale(1.08); } 100% { transform: none; } }
 
+  .app-row { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; margin-top: 6px; font-size: 16px; }
+  .app-ok { color: var(--ok); font-weight: 600; font-family: var(--mono); }
+  .app-warn { color: var(--warn); font-weight: 600; font-family: var(--mono); }
+  .app-msg { color: var(--mute); font-style: italic; }
+  .app-link { margin-left: auto; font-size: 14px; font-weight: 600; color: var(--accent); }
   .activity { margin-top: 16px; display: grid; gap: 8px; }
   .activity ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
   .activity li { font-family: var(--mono); font-size: 16px; color: var(--body); display: flex; gap: 10px; align-items: baseline; min-width: 0; }
@@ -170,6 +176,215 @@
   .phase-ok { color: var(--ok); }
   .phase-bad { color: var(--danger); }
   .empty { color: var(--mute); font-size: 18px; margin-top: 6px; }
+
+  /* sfondo animato: griglia che scorre e due luci lente. Resta sotto il 10% di contrasto
+     per non disturbare la lettura su proiettore. */
+  body { position: relative; overflow-x: hidden; }
+  .bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; background: var(--ground); }
+  .bg::before {
+    content: ""; position: absolute; inset: -80px;
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, var(--accent) 9%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--accent) 9%, transparent) 1px, transparent 1px);
+    background-size: 40px 40px;
+    animation: grid-move 18s linear infinite;
+    mask-image: radial-gradient(ellipse at 60% 40%, #000 25%, transparent 75%);
+  }
+  .bg .glow { position: absolute; width: 60vw; height: 60vw; border-radius: 50%; filter: blur(80px); opacity: .18; }
+  .bg .g1 { background: var(--accent); left: -15vw; top: -20vw; animation: drift1 26s ease-in-out infinite alternate; }
+  .bg .g2 { background: #3b6fd8; right: -20vw; bottom: -30vw; opacity: .12; animation: drift2 32s ease-in-out infinite alternate; }
+  .bg .scan { position: absolute; left: 0; right: 0; height: 120px; top: -120px;
+    background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--accent) 7%, transparent), transparent);
+    animation: scan 9s linear infinite; }
+  @keyframes grid-move { to { transform: translate(40px, 40px); } }
+  @keyframes drift1 { to { transform: translate(18vw, 14vw) scale(1.15); } }
+  @keyframes drift2 { to { transform: translate(-14vw, -10vw) scale(.9); } }
+  @keyframes scan { to { top: 110%; } }
+
+  /* transizione a tutto schermo tra un capitolo e l'altro */
+  .warp { position: fixed; inset: 0; z-index: 50; pointer-events: none; display: grid; place-items: center;
+    background: #071215; color: #e8f0ee; clip-path: polygon(0 0, 0 0, 0 100%, 0 100%); }
+  .warp.go { animation: warp-in 1.5s cubic-bezier(.7, 0, .2, 1) forwards; }
+  .warp::before { content: ""; position: absolute; inset: 0;
+    background-image: linear-gradient(to right, rgba(83, 191, 179, .16) 1px, transparent 1px),
+                      linear-gradient(to bottom, rgba(83, 191, 179, .16) 1px, transparent 1px);
+    background-size: 56px 56px; }
+  .warp::after { content: ""; position: absolute; left: 0; right: 0; height: 2px; top: 50%;
+    background: linear-gradient(to right, transparent, #53bfb3, transparent); box-shadow: 0 0 24px #53bfb3; }
+  .warp.go::after { animation: warp-line 1.5s ease-in-out forwards; }
+  .warp-inner { position: relative; text-align: center; opacity: 0; }
+  .warp.go .warp-inner { animation: warp-text 1.5s ease-out forwards; }
+  .warp-num { font-family: var(--mono); font-size: 120px; font-weight: 600; line-height: 1; color: #53bfb3;
+    letter-spacing: -.04em; text-shadow: 0 0 40px rgba(83, 191, 179, .55); }
+  .warp-title { font-size: 42px; font-weight: 600; margin-top: 10px; }
+  .warp-sub { font-family: var(--mono); font-size: 16px; letter-spacing: .3em; text-transform: uppercase; color: #8fb8b2; margin-top: 12px; }
+  @keyframes warp-in {
+    0% { clip-path: polygon(0 0, 0 0, -20% 100%, -20% 100%); }
+    32% { clip-path: polygon(0 0, 120% 0, 100% 100%, -20% 100%); }
+    68% { clip-path: polygon(0 0, 120% 0, 100% 100%, -20% 100%); }
+    100% { clip-path: polygon(120% 0, 120% 0, 100% 100%, 100% 100%); }
+  }
+  @keyframes warp-line { 0%, 25% { transform: scaleX(0); } 45% { transform: scaleX(1); } 75% { opacity: 1; } 100% { transform: scaleX(1); opacity: 0; } }
+  @keyframes warp-text { 0%, 25% { opacity: 0; transform: translateY(14px); letter-spacing: .1em; } 40%, 70% { opacity: 1; transform: none; } 90%, 100% { opacity: 0; transform: translateY(-10px); } }
+
+  /* domanda aperta: bordo che scorre; risposta: onda che si allarga dall'opzione giusta */
+  .question[data-phase="ask"] { position: relative; border-color: transparent;
+    background: linear-gradient(var(--panel), var(--panel)) padding-box,
+                conic-gradient(from var(--ang, 0deg), var(--accent), transparent 30%, transparent 70%, var(--accent)) border-box;
+    border: 2px solid transparent; animation: spin-border 3s linear infinite; }
+  @property --ang { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+  @keyframes spin-border { to { --ang: 360deg; } }
+  .question[data-phase="reveal"] .opt.right { position: relative; overflow: visible; }
+  .question[data-phase="reveal"] .opt.right::after { content: ""; position: absolute; inset: -2px; border-radius: 8px;
+    border: 2px solid var(--ok); animation: ping 1.2s ease-out 2; }
+  @keyframes ping { from { opacity: .9; transform: scale(1); } to { opacity: 0; transform: scale(1.06, 1.35); } }
+
+  /* pacchetto che scende lungo la freccia quando uno stage cambia versione */
+  .arrow.flow::before { content: ""; position: absolute; left: -5px; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: packet .9s ease-in 3; }
+  @keyframes packet { from { top: -4px; opacity: 1; } to { top: 20px; opacity: .2; } }
+
+  /* vista regia */
+  .regia { padding: 18px 20px; display: grid; gap: 16px; border-left: 4px solid var(--accent); }
+  .regia[hidden], .prep[hidden], .creds[hidden] { display: none; }
+  .regia { padding: 14px 18px; gap: 12px; }
+  .now-text { font-size: 24px; }
+  .now-label { font-family: var(--mono); font-size: 14px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  .now-text { font-size: 30px; line-height: 1.3; color: var(--ink); font-weight: 600; }
+  .now-text kbd { font-family: var(--mono); font-size: .8em; border: 1.5px solid var(--line-strong); border-bottom-width: 3px;
+    border-radius: 6px; padding: 0 8px; background: var(--panel-2); }
+  .before { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: b; }
+  .before li { counter-increment: b; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; align-items: start; font-size: 19px; color: var(--ink); }
+  .before li::before { content: counter(b); font-family: var(--mono); font-weight: 600; width: 30px; height: 30px; border-radius: 50%;
+    display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+  .before small { display: block; color: var(--mute); font-size: 16px; }
+  .drawer-back { position: fixed; inset: 0; z-index: 40; background: rgba(8, 14, 16, .35); backdrop-filter: blur(2px); }
+  .drawer { position: fixed; z-index: 41; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); overflow-y: auto;
+    background: var(--panel); border-left: 1px solid var(--line); box-shadow: -12px 0 40px rgba(0, 0, 0, .18);
+    padding: 18px 20px; display: grid; gap: 16px; align-content: start; animation: slide-in .25s ease-out; }
+  @keyframes slide-in { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .drawer-head { display: flex; justify-content: space-between; align-items: center; }
+  .creds { display: grid; gap: 14px; }
+  .cred { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: var(--panel-2); display: grid; gap: 6px; min-width: 0; }
+  .cred-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .cred-top b { font-size: 20px; color: var(--ink); }
+  .cred-top a { font-size: 15px; font-weight: 600; text-decoration: none; color: var(--panel); background: var(--accent); border-radius: 5px; padding: 3px 10px; }
+  .copy { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 6px; align-items: center; width: 100%; text-align: left; cursor: pointer;
+    font: 16px var(--mono); color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 6px 10px; }
+  .copy span:first-child { color: var(--mute); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+  .copy span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .copy:hover { border-color: var(--accent); }
+  .copy.done { border-color: var(--ok); background: var(--ok-soft); }
+  .copy.done span:last-child::after { content: "  copiato"; color: var(--ok); font-family: var(--sans); }
+  .cert { font-size: 14px; color: var(--mute); }
+  .cmd { font-family: var(--mono); }
+
+  /* preparazione */
+  .prep { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .prep li { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: center;
+    font-size: 22px; color: var(--body); padding: 10px 14px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); }
+  .prep li .st { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line-strong); }
+  .prep li[data-s="done"] { color: var(--ink); }
+  .prep li[data-s="done"] .st { background: var(--ok); border-color: var(--ok); }
+  .prep li[data-s="running"] { color: var(--ink); border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  .prep li[data-s="running"] .st { border-color: var(--accent); border-right-color: transparent; animation: rot .9s linear infinite; }
+  .prep li[data-s="failed"] { border-color: var(--danger); background: var(--danger-soft); }
+  .prep li[data-s="failed"] .st { background: var(--danger); border-color: var(--danger); }
+  .prep li .min { font-family: var(--mono); font-size: 16px; color: var(--mute); }
+  @keyframes rot { to { transform: rotate(360deg); } }
+  .bar { height: 8px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
+  .bar span { display: block; height: 100%; background: linear-gradient(to right, var(--accent), #3b6fd8); transition: width .6s; }
+  .view-btn { cursor: pointer; font: 600 14px var(--mono); color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent);
+    border-radius: 999px; padding: 2px 12px; text-decoration: none; }
+
+  /* comandi della regia */
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .controls[hidden] { display: none; }
+  .ctl { font: 600 20px var(--sans); border-radius: 8px; padding: 10px 22px; cursor: pointer; border: 2px solid var(--accent);
+    background: var(--panel); color: var(--accent); }
+  .ctl.primary { background: var(--accent); color: var(--panel); box-shadow: 0 0 0 0 var(--accent); animation: ready-pulse 2s ease-out infinite; }
+  .ctl.danger { border-color: var(--danger); color: var(--danger); font-size: 16px; padding: 8px 14px; }
+  .ctl:disabled { opacity: .35; cursor: default; animation: none; }
+  .ctl.sent { background: var(--ok); border-color: var(--ok); color: var(--panel); animation: none; }
+  .ctl-hint { font-size: 15px; color: var(--mute); }
+  @keyframes ready-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 100% { box-shadow: 0 0 0 16px transparent; } }
+
+  /* selettore del pannello destro */
+  .panel-tabs { display: inline-flex; gap: 2px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 2px; }
+  .panel-tabs button { font: 600 14px var(--mono); letter-spacing: .08em; text-transform: uppercase; border: 0; border-radius: 4px;
+    padding: 4px 12px; background: transparent; color: var(--mute); cursor: pointer; }
+  .panel-tabs button[aria-pressed="true"] { background: var(--panel); color: var(--accent); box-shadow: var(--shadow); }
+  .pane[hidden] { display: none; }
+  .pane { animation: fade .3s ease-out; }
+
+  /* vista cluster */
+  .nodes { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .knode { font: 14px var(--mono); border: 1px solid var(--line-strong); border-radius: 5px; padding: 3px 8px; background: var(--panel-2); color: var(--body); display: flex; gap: 6px; align-items: center; }
+  .knode i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); font-style: normal; }
+  .knode.down i { background: var(--danger); box-shadow: none; }
+  .knode b { color: var(--warn); font-weight: 600; }
+  .nsgrid { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ns { border: 1px dashed var(--line-strong); border-radius: 8px; padding: 8px 10px 10px; background: color-mix(in srgb, var(--panel) 85%, transparent);
+    min-width: 0; position: relative; }
+  .ns.stage { border-style: solid; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .ns-name { font: 600 14px var(--mono); color: var(--ink); display: flex; justify-content: space-between; gap: 6px; }
+  .ns-name span:last-child { color: var(--mute); font-weight: 400; }
+  .wl { display: flex; align-items: center; gap: 8px; margin-top: 6px; min-width: 0; }
+  .wl-name { font: 13px var(--mono); color: var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; }
+  .pods { display: flex; gap: 4px; flex: none; flex-wrap: wrap; justify-content: flex-end; max-width: 60%; }
+  .pod { width: 14px; height: 14px; border-radius: 4px; background: var(--ok); transition: background .4s, opacity .4s, transform .4s; }
+  .pod[data-s="starting"] { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  .pod[data-s="deleting"] { background: var(--line-strong); opacity: .5; transform: scale(.7); }
+  .pod[data-s="failed"] { background: var(--danger); }
+  .pod.born { animation: born .8s cubic-bezier(.2, 1.6, .4, 1); }
+  @keyframes born { from { transform: scale(0); } to { transform: scale(1); } }
+  .pod.restarted { outline: 2px solid var(--warn); outline-offset: 1px; }
+  .objs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .obj { font: 13px var(--mono); border-radius: 4px; padding: 1px 6px; background: var(--accent-soft); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+  /* vista 3D: il piano del cluster inclinato in isometria, un'isola per namespace e un cubo
+     per pod. Le etichette sono controruotate per restare leggibili. */
+  .iso { position: relative; height: 470px; overflow: hidden; perspective: 1600px; perspective-origin: 50% 20%;
+    border-radius: 8px; background: radial-gradient(ellipse at 50% 60%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%); }
+  .iso-scene { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-style: preserve-3d; }
+  .iso-plane { --rz: -40deg; position: absolute; width: 540px; height: 540px; left: -270px; top: -270px;
+    transform-style: preserve-3d; transform: rotateX(58deg) rotateZ(var(--rz));
+    display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 22px;
+    animation: sway 24s ease-in-out infinite alternate; }
+  @keyframes sway { from { transform: rotateX(58deg) rotateZ(-46deg); } to { transform: rotateX(56deg) rotateZ(-34deg); } }
+  .isle { position: relative; transform-style: preserve-3d; border-radius: 10px;
+    background: color-mix(in srgb, var(--panel) 88%, var(--accent));
+    border: 1.5px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent), 0 0 30px color-mix(in srgb, var(--accent) 18%, transparent); }
+  .isle.stage { border-color: var(--accent); background: color-mix(in srgb, var(--panel) 75%, var(--accent)); }
+  .isle.empty-isle { background: color-mix(in srgb, var(--panel) 96%, var(--accent)); border-style: dashed; }
+  .isle.empty-isle .isle-label { color: var(--mute); }
+  .isle::after { content: ""; position: absolute; left: 0; right: 0; bottom: -10px; height: 10px; border-radius: 0 0 10px 10px;
+    transform-origin: top; transform: rotateX(-90deg); background: color-mix(in srgb, var(--accent) 35%, var(--line-strong)); }
+  .isle-pods { position: absolute; inset: 14px 14px 34px 14px; display: flex; flex-wrap: wrap; gap: 9px; align-content: flex-start; transform-style: preserve-3d; }
+  .isle-label { position: absolute; left: 8px; bottom: 8px; transform-origin: 0 100%; white-space: nowrap; pointer-events: none;
+    transform: translateZ(46px) rotateZ(calc(var(--rz) * -1)) rotateX(-58deg);
+    font: 600 13px var(--mono); color: var(--ink); background: color-mix(in srgb, var(--panel) 85%, transparent);
+    border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
+  .isle-label small { font-weight: 400; color: var(--mute); margin-left: 6px; }
+  .cube { --c: var(--ok); --h: 16px; position: relative; width: 16px; height: 16px; transform-style: preserve-3d; flex: none; }
+  .cube i { position: absolute; inset: 0; display: block; }
+  .cube .t { background: var(--c); transform: translateZ(var(--h)); box-shadow: 0 0 10px color-mix(in srgb, var(--c) 60%, transparent); }
+  .cube .s1 { background: color-mix(in srgb, var(--c) 72%, #000); transform-origin: bottom; transform: rotateX(-90deg) translateY(0); height: var(--h); top: calc(16px - var(--h)); }
+  .cube .s2 { background: color-mix(in srgb, var(--c) 55%, #000); transform-origin: right; transform: rotateY(90deg); width: var(--h); left: calc(16px - var(--h)); }
+  .cube .s3 { background: color-mix(in srgb, var(--c) 60%, #000); transform-origin: top; transform: rotateX(90deg); height: var(--h); }
+  .cube .s4 { background: color-mix(in srgb, var(--c) 65%, #000); transform-origin: left; transform: rotateY(-90deg); width: var(--h); }
+  .cube[data-s="starting"] { --c: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  .cube[data-s="failed"] { --c: var(--danger); }
+  .cube[data-s="deleting"] { --c: var(--line-strong); --h: 6px; opacity: .55; }
+  .cube.born { animation: drop .9s cubic-bezier(.3, 1.4, .5, 1); }
+  @keyframes drop { from { transform: translateZ(90px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .cube.restarted .t { outline: 2px solid var(--warn); }
+  .obj3d { position: absolute; right: 8px; top: 8px; display: grid; gap: 3px; transform-origin: 100% 0;
+    transform: translateZ(30px) rotateZ(calc(var(--rz) * -1)) rotateX(-58deg); pointer-events: none; }
+  .obj3d span { font: 12px var(--mono); border-radius: 4px; padding: 0 5px; background: var(--accent-soft); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); white-space: nowrap; }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font: 13px var(--mono); color: var(--mute); }
+  .legend span { display: inline-flex; gap: 5px; align-items: center; }
+  .legend .pod { width: 11px; height: 11px; animation: none; }
 
   .keys { position: fixed; right: 12px; bottom: 8px; font-family: var(--mono); font-size: 13px; color: var(--mute); opacity: .7; }
   :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
@@ -184,6 +399,9 @@
     .q-text { font-size: 23px; }
     .opt { font-size: 19px; }
     .keys { display: none; }
+    .creds { grid-template-columns: minmax(0, 1fr); }
+    .warp-num { font-size: 72px; }
+    .warp-title { font-size: 28px; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -191,20 +409,43 @@
 </style>
 </head>
 <body>
+<div class="bg" aria-hidden="true"><span class="glow g1"></span><span class="glow g2"></span><span class="scan"></span></div>
+<div class="warp" id="warp" aria-hidden="true"><div class="warp-inner"><div class="warp-num" id="warp-num"></div><div class="warp-title" id="warp-title"></div><div class="warp-sub" id="warp-sub"></div></div></div>
+<div class="drawer-back" id="access-back" hidden></div>
+<aside class="drawer" id="access" hidden aria-label="Accessi">
+  <div class="drawer-head"><span class="now-label">Accessi</span><button type="button" class="ctl danger" id="access-close">Chiudi</button></div>
+  <div class="creds" id="creds"></div>
+  <p class="cert">Un clic copia il valore negli appunti. Le password restano nascoste sullo schermo.<br>ArgoCD e Kargo hanno certificati self-signed: al primo accesso Avanzate, poi Procedi.</p>
+</aside>
 <header class="top">
   <div class="brand"><h1>GitOps dal vivo</h1><span class="eyebrow">gitlab · argocd · kargo</span></div>
   <span class="pill" id="provider">gke</span>
   <ol class="rail" id="rail" aria-label="Capitoli della demo"></ol>
   <span class="pill" id="link" role="status">avvio</span>
+  <button class="view-btn" id="access-btn" type="button" aria-expanded="false" aria-controls="access">accessi</button>
 </header>
 
 <main>
   <section class="story" aria-live="polite">
+    <article class="card regia" id="regia">
+      <span class="now-label">Prossimo passo</span>
+      <p class="now-text" id="now-text"></p>
+      <div class="controls" id="controls" hidden>
+        <button class="ctl primary" type="button" id="ctl-next">Avanti</button>
+        <button class="ctl" type="button" id="ctl-u" hidden>Tocca al pubblico</button>
+        <button class="ctl danger" type="button" id="ctl-q">Esci</button>
+        <span class="ctl-hint">oppure Invio, spazio, freccia destra, PagGiu'</span>
+      </div>
+      <ol class="before" id="before" hidden></ol>
+    </article>
+
     <div class="chapter-head" id="head">
-      <span class="eyebrow" id="ch-num">capitolo 1 di 8</span>
+      <span class="eyebrow" id="ch-num">capitolo 1 di 9</span>
       <h2 id="ch-title">La mappa</h2>
       <p class="idea" id="ch-idea"></p>
       <ul class="points" id="ch-points"></ul>
+      <div class="bar" id="prep-bar" hidden><span id="prep-fill" style="width:0"></span></div>
+      <ol class="prep" id="prep" hidden></ol>
     </div>
 
     <article class="card question" id="question" hidden>
@@ -221,75 +462,103 @@
     <p class="status-line" id="note" hidden><span class="dot"></span><span id="note-text"></span></p>
   </section>
 
-  <aside class="card pipeline" aria-label="Pipeline live">
-    <div class="eyebrow"><span>Pipeline live</span><span id="ts"></span></div>
+  <aside class="card pipeline" aria-label="Stato live">
+    <div class="eyebrow"><span class="panel-tabs" role="group" aria-label="Pannello">
+      <button type="button" data-panel="pipeline" aria-pressed="true">Pipeline</button>
+      <button type="button" data-panel="cluster" aria-pressed="false">Cluster</button>
+    </span><span id="ts"></span></div>
+
+    <div class="pane" id="pane-cluster" hidden>
+      <div class="nodes" id="k-nodes"></div>
+      <div class="iso" id="k-iso"><div class="iso-scene" id="k-scene"><div class="iso-plane" id="k-ns"></div></div></div>
+      <div class="legend">
+        <span><i class="pod"></i>pronto</span><span><i class="pod" data-s="starting"></i>in avvio</span>
+        <span><i class="pod" data-s="deleting"></i>in chiusura</span><span><i class="pod" data-s="failed"></i>errore</span>
+        <span><i class="pod restarted"></i>riavviato</span>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-pipeline">
 
     <div class="node" id="wh">
       <div class="node-top">
         <span class="node-name">Warehouse</span>
         <span class="badges"><span class="badge" id="wh-constraint">-</span></span>
       </div>
-      <div class="meta" style="margin-top:4px"><span>osserva public.ecr.aws/nginx/nginx</span></div>
+      <div class="meta" style="margin-top:4px"><span>osserva ghcr.io/stefanprodan/podinfo + repo, manifests/kargo-demo</span></div>
       <div class="chips" id="wh-chips"></div>
     </div>
     <div id="stages"></div>
 
+    </div>
+
     <div class="activity">
-      <span class="eyebrow">Attivita'</span>
+      <span class="eyebrow">Attività</span>
       <ul id="promos"></ul>
       <ul id="events"></ul>
     </div>
   </aside>
 </main>
-<div class="keys" aria-hidden="true">frecce capitolo · spazio fase · m prova · t tema</div>
+<div class="keys" id="keys" aria-hidden="true">frecce capitolo · spazio fase · a accessi · m prova · t tema</div>
 
 <script>
 (function () {
   "use strict";
 
   var CHAPTERS = [
-    { id: "mappa", points: ["GitLab: il repository gitops. main lo scrivono le persone", "ArgoCD: confronta il cluster con il repo e lo riallinea", "Kargo: sceglie la versione di ogni ambiente, con un commit"], title: "La mappa", short: "Mappa",
-      idea: "Tre strumenti, una sola fonte di verita': il repository git dentro GitLab.",
+    { id: "mappa", panel: "cluster", points: ["GitLab: il repository gitops. main lo scrivono le persone", "ArgoCD: confronta il cluster con il repo e lo riallinea", "Kargo: sceglie la versione di ogni ambiente, con un commit"], title: "La mappa", short: "Mappa",
+      idea: "Tre strumenti, una sola fonte di verità: il repository git dentro GitLab.",
       look: [["GitLab: branch", "gitlab", "/root/gitops/-/branches"], ["ArgoCD: Application", "argocd", "/applications"]],
       questions: [
         { q: "Chi fa i commit sui branch stage/dev, stage/staging e stage/prod?",
           o: ["Chi presenta, a mano", "Una pipeline CI di GitLab", "Kargo, durante la promozione", "ArgoCD, dopo il sync"], a: 2,
-          why: "Kargo esegue la PromotionTask: clona main, renderizza con kustomize l'overlay dello stage e committa il risultato sul branch. ArgoCD legge e applica, non scrive mai nel repo." }
+          why: "Kargo esegue la PromotionTask: clona il commit contenuto nel Freight, renderizza con kustomize l'overlay dello stage e committa il risultato sul branch. ArgoCD legge e applica, non scrive mai nel repo." }
       ] },
-    { id: "appofapps", points: ["La root 'apps' legge la cartella inventory del repo", "Ogni file in inventory diventa una Application", "Cancellare nel cluster non basta: decide il git"], title: "Il git comanda", short: "App of Apps",
+    { id: "appofapps", panel: "cluster", points: ["La root 'apps' legge la cartella inventory del repo", "Ogni file in inventory diventa una Application", "Cancellare nel cluster non basta: decide il git"], title: "Il git comanda", short: "App of Apps",
       idea: "Anche le Application di ArgoCD sono manifest nel repo: la root 'apps' genera tutte le altre.",
       look: [["ArgoCD: albero di apps", "argocd", "/applications/argocd/apps?view=tree"]],
       questions: [
         { q: "Cancello a mano la Application nginx con kubectl delete. Cosa succede nei secondi successivi?",
-          o: ["Resta cancellata: ArgoCD non gestisce le proprie Application", "La root 'apps' la ricrea, perche' il suo manifest e' ancora nella cartella inventory", "Viene ricreata solo al prossimo commit su main", "Viene cancellato anche il namespace nginx"], a: 1,
+          o: ["Resta cancellata: ArgoCD non gestisce le proprie Application", "La root 'apps' la ricrea in pochi secondi", "Viene ricreata solo al prossimo commit su main", "Viene cancellato anche il namespace nginx"], a: 1,
           why: "La root 'apps' ha sync automatico con selfHeal sulla cartella inventory: per lei le Application figlie sono risorse come le altre. Per toglierne una davvero si cancella il file dal repo." }
       ] },
-    { id: "freight", points: ["Warehouse: osserva il registry con un vincolo semver", "Freight: una versione promuovibile, con un nome leggibile", "dev: promozione automatica, nessun clic"], title: "Warehouse e Freight", short: "Freight",
-      idea: "Kargo osserva il registry e impacchetta ogni versione in un Freight. dev lo riceve da solo.",
+    { id: "freight", points: ["Warehouse: osserva l'immagine podinfo e la cartella dell'app nel repo", "Freight: un tag più un commit, con un nome leggibile", "dev: promozione automatica, nessun clic"], title: "Warehouse e Freight", short: "Freight",
+      idea: "Kargo osserva registry e repo e impacchetta ogni combinazione nuova in un Freight. dev lo riceve da solo.",
       look: [["Kargo: progetto", "kargo", "/project/kargo-demo"], ["GitLab: commit su stage/dev", "gitlab", "/root/gitops/-/commits/stage/dev"]],
       questions: [
-        { q: "Nessuno ha cliccato niente, eppure dev gira gia' la versione nuova. Dove e' configurato?",
-          o: ["Nel ProjectConfig: promotionPolicies con autoPromotionEnabled sullo stage dev", "Nello spec dello Stage dev", "Nel sync automatico della Application ArgoCD kargo-demo-dev", "In una pipeline schedulata di GitLab"], a: 0,
-          why: "Da Kargo 1.9 le promotionPolicies stanno nel ProjectConfig. Il sync automatico di ArgoCD applica cio' che e' nel branch, ma non decide cosa scriverci." }
+        { q: "Nessuno ha cliccato niente, eppure dev gira già la versione nuova. Dove è configurato?",
+          o: ["Nel ProjectConfig: promotionPolicies con autoPromotionEnabled", "Nello spec dello Stage dev", "Nel sync automatico della Application ArgoCD kargo-demo-dev", "In una pipeline schedulata di GitLab"], a: 0,
+          why: "Da Kargo 1.9 le promotionPolicies stanno nel ProjectConfig. Il sync automatico di ArgoCD applica ciò che è nel branch, ma non decide cosa scriverci." },
+        { q: "Che cosa c'è dentro un Freight di questa demo?",
+          o: ["Solo il tag dell'immagine", "Un tag di podinfo più un commit della configurazione", "Una copia dell'intero repository", "Il manifest già renderizzato per dev"], a: 1,
+          why: "Il Warehouse ha due sottoscrizioni, immagine e git. Il Freight le fissa insieme: promuovere lo stesso Freight in prod dà lo stesso tag e la stessa configurazione che hanno funzionato in staging." }
       ] },
-    { id: "promote", points: ["dev, staging, prod: una catena, non tre ambienti isolati", "Ogni promozione e' un commit sul branch dello stage", "Gli overlay kustomize fanno la differenza tra ambienti"], title: "Promozione con cancello", short: "Promozione",
+    { id: "promote", points: ["dev, staging, prod: una catena, non tre ambienti isolati", "Ogni promozione è un commit sul branch dello stage", "Gli overlay kustomize fanno la differenza tra ambienti"], title: "Promozione con cancello", short: "Promozione",
       idea: "staging e prod si promuovono a mano, e solo nell'ordine della catena.",
       look: [["Kargo: progetto", "kargo", "/project/kargo-demo"], ["GitLab: commit su stage/prod", "gitlab", "/root/gitops/-/commits/stage/prod"]],
       questions: [
-        { q: "Provo a promuovere direttamente in prod il Freight che e' appena arrivato in dev. Cosa succede?",
-          o: ["Riesce: in prod la promozione e' manuale, quindi libera", "Kargo la rifiuta: prod accetta solo Freight gia' passati da staging", "Riesce, ma ArgoCD non sincronizza", "Kargo promuove prima staging in automatico"], a: 1,
-          why: "Lo Stage prod dichiara requestedFreight con sources.stages: [staging]. Un Freight non ancora arrivato in staging non e' disponibile per prod: la catena non si salta." },
+        { q: "Provo a promuovere direttamente in prod il Freight che è appena arrivato in dev. Cosa succede?",
+          o: ["Riesce: in prod la promozione è manuale, quindi libera", "Kargo la rifiuta: prod accetta solo Freight già passati da staging", "Riesce, ma ArgoCD non sincronizza", "Kargo promuove prima staging in automatico"], a: 1,
+          why: "Lo Stage prod dichiara requestedFreight con sources.stages: [staging]. Un Freight non ancora arrivato in staging non è disponibile per prod: la catena non si salta." },
         { q: "dev ha 1 replica, staging 2, prod 3. Nessun autoscaler. Da dove arriva la differenza?",
           o: ["Dagli overlay kustomize di ogni stage, renderizzati nel branch", "Da ArgoCD, che scala in base al namespace", "Da una patch manuale fatta al primo deploy", "Dalle risorse libere sui nodi"], a: 0,
-          why: "Ogni stage ha il suo kustomization.yaml con replicas. Nel branch stage/prod il numero 3 e' scritto in chiaro: il diff di una promozione mostra esattamente cosa verra' applicato." }
+          why: "Ogni stage ha il suo kustomization.yaml con replicas. Nel branch stage/prod il numero 3 è scritto in chiaro: il diff di una promozione mostra esattamente cosa verrà applicato." }
       ] },
-    { id: "release", points: ["Un commit su main cambia cosa osserva Kargo", "Il nuovo Freight avanza da solo solo dove e' previsto", "Per il resto serve una decisione: una promozione"], title: "Arriva una nuova versione", short: "Release",
+    { id: "release", points: ["Un commit su main cambia cosa osserva Kargo", "Il nuovo Freight avanza da solo, ma solo dove è previsto", "Per il resto serve una decisione: una promozione"], title: "Arriva una nuova versione", short: "Release",
       idea: "Un commit su main cambia cosa osserva il Warehouse. Il resto avanza da solo, fino a dove abbiamo deciso.",
       look: [["GitLab: commit su main", "gitlab", "/root/gitops/-/commits/main"], ["Kargo: progetto", "kargo", "/project/kargo-demo"]],
       questions: [
-        { q: "Con un commit su main cambio il vincolo del Warehouse da ~1.26.0 a ~1.27.0. Dopo un minuto, cosa gira in prod?",
-          o: ["1.27, ovunque", "Ancora 1.26: il nuovo Freight arriva solo in dev", "Niente: il Warehouse cancella i Freight 1.26", "1.27, perche' prod segue main"], a: 1,
-          why: "Il nuovo Freight entra in dev con l'auto-promozione. staging e prod restano sul Freight precedente finche' qualcuno non promuove: due versioni in tre ambienti, tutto tracciato in git." }
+        { q: "Con un commit su main cambio il vincolo del Warehouse da ~6.9.0 a ~6.10.0. Dopo un minuto, cosa gira in prod?",
+          o: ["6.10, ovunque", "Ancora 6.9: il nuovo Freight arriva solo in dev", "Niente: il Warehouse cancella i Freight 6.9", "6.10, perché prod segue main"], a: 1,
+          why: "Il nuovo Freight entra in dev con l'auto-promozione. staging e prod restano sul Freight precedente finché qualcuno non promuove: due versioni in tre ambienti, tutto tracciato in git." }
+      ] },
+    { id: "config", points: ["Il Freight contiene anche un commit di configurazione", "Cambiare il messaggio dell'app è una release come un'immagine nuova", "Stessa catena: dev da solo, staging e prod su decisione"], title: "Anche la configurazione viaggia", short: "Config",
+      idea: "Un Freight è un'immagine più un commit: cambiare la configurazione è una release come le altre.",
+      look: [["GitLab: commit su main", "gitlab", "/root/gitops/-/commits/main"], ["Kargo: progetto", "kargo", "/project/kargo-demo"]],
+      questions: [
+        { q: "Cambio su main solo il messaggio che podinfo mostra, senza nessuna immagine nuova. Cosa succede?",
+          o: ["Niente: Kargo osserva solo le immagini", "Nasce un Freight con la stessa immagine e il nuovo commit, e dev lo riceve da solo", "ArgoCD applica subito il messaggio in tutti gli ambienti, perché main è cambiato", "Serve una nuova immagine per far partire una promozione"], a: 1,
+          why: "Il Warehouse sottoscrive anche manifests/kargo-demo nel repo: un commit lì produce un Freight nuovo. ArgoCD non legge main per gli stage, legge i branch stage/*, che cambiano solo con una promozione." }
       ] },
     { id: "drift", points: ["dev: selfHeal, la modifica manuale sparisce", "staging: ArgoCD segnala OutOfSync e aspetta", "Rientro: un Sync o la prossima promozione"], title: "Drift: chi vince", short: "Drift",
       idea: "Qualcuno cambia il cluster a mano. In dev ArgoCD corregge da solo, in staging segnala e aspetta.",
@@ -297,48 +566,71 @@
       questions: [
         { q: "Scalo a mano dev a 4 repliche e staging a 5. Cosa vediamo dopo 30 secondi?",
           o: ["dev 4 e staging 5, entrambe Synced", "dev torna a 1; staging resta a 5 e diventa OutOfSync", "Tornano entrambe al valore del git", "dev resta a 4, staging torna a 2"], a: 1,
-          why: "selfHeal e' attivo solo su dev. In staging ArgoCD rileva il drift e lo mostra come OutOfSync, ma senza sync automatico non agisce: il rientro e' una decisione, presa con un Sync o con la prossima promozione." },
-        { q: "Su kargo-demo-dev c'e' selfHeal ma prune e' spento. Perche'?",
-          o: ["prune e selfHeal non si possono attivare insieme", "Il branch contiene solo i manifest dello stage: con prune ArgoCD cancellerebbe nel namespace tutto cio' che il branch non conosce", "prune rallenta il self-heal", "prune richiede una licenza"], a: 1,
-          why: "prune rimuove le risorse gestite che spariscono dal source. Su un branch renderizzato da un tool e' un rischio che non serve per mostrare il self-heal." }
+          why: "selfHeal è attivo solo su dev. In staging ArgoCD rileva il drift e lo mostra come OutOfSync, ma senza sync automatico non agisce: il rientro è una decisione, presa con un Sync o con la prossima promozione." },
+        { q: "Su kargo-demo-dev c'è selfHeal ma prune è spento. Perché?",
+          o: ["prune e selfHeal non si possono attivare insieme", "Con prune ArgoCD cancellerebbe dal namespace tutto ciò che il branch non conosce", "prune rallenta il self-heal", "prune richiede una licenza"], a: 1,
+          why: "prune rimuove le risorse gestite che spariscono dal source. Su un branch renderizzato da un tool è un rischio che non serve per mostrare il self-heal." }
       ] },
-    { id: "rollback", points: ["Il Freight precedente resta promuovibile", "Il rollback e' un commit nuovo: la storia resta intera", "Niente rollout undo: il git resterebbe indietro"], title: "Rollback", short: "Rollback",
+    { id: "rollback", points: ["Il Freight precedente resta promuovibile", "Il rollback è un commit nuovo: la storia resta intera", "Niente rollout undo: il git resterebbe indietro"], title: "Rollback", short: "Rollback",
       idea: "Tornare indietro usa lo stesso percorso del deploy: si ripromuove un Freight precedente.",
       look: [["Kargo: progetto", "kargo", "/project/kargo-demo"], ["GitLab: commit su stage/staging", "gitlab", "/root/gitops/-/commits/stage/staging"]],
       questions: [
-        { q: "La nuova versione in staging ha un bug. Qual e' il rollback corretto?",
+        { q: "La nuova versione in staging ha un bug. Qual è il rollback corretto?",
           o: ["kubectl rollout undo sul Deployment", "Ripromuovere in staging il Freight precedente", "git revert su main", "Cancellare il Freight nuovo"], a: 1,
-          why: "Il Freight precedente e' ancora promuovibile: Kargo riscrive stage/staging e ArgoCD sincronizza. Un rollout undo cambia il cluster ma non il git, quindi resta come drift." }
+          why: "Il Freight precedente è ancora promuovibile: Kargo riscrive stage/staging e ArgoCD sincronizza. Un rollout undo cambia il cluster ma non il git, quindi resta come drift." }
       ] },
-    { id: "debrief", points: ["Il git come unica fonte di verita', dall'inizio alla fine", "Cosa cambia in produzione", "Domande"], title: "Debriefing", short: "Debriefing",
-      idea: "Tre domande per chiudere, e il limite da dichiarare.",
+    { id: "debrief", points: ["Il git come unica fonte di verità, dall'inizio alla fine", "Cosa cambia in produzione", "Domande"], title: "Debriefing", short: "Debriefing",
+      idea: "Quattro domande per chiudere, e il limite da dichiarare.",
       look: [],
       questions: [
         { q: "Tolgo l'annotazione kargo.akuity.io/authorized-stage dalla Application di prod. Alla prossima promozione?",
-          o: ["Nessun effetto, e' solo un'etichetta", "Il commit su stage/prod avviene, poi lo step argocd-update viene rifiutato", "Kargo rimette l'annotazione", "GitLab rifiuta il push"], a: 1,
-          why: "L'annotazione e' il consenso della Application a farsi pilotare da quello Stage. I passi git riescono, argocd-update no: il git e' avanti, il cluster no." },
-        { q: "Perche' i branch stage/* contengono YAML gia' renderizzato invece degli overlay?",
-          o: ["Perche' ArgoCD non supporta kustomize", "Il diff di una promozione mostra gli oggetti esatti che verranno applicati, e il rollback e' un commit precedente", "Per occupare meno spazio", "Per far condividere lo stesso branch a piu' stage"], a: 1,
-          why: "E' il rendered manifests pattern: la review guarda YAML finito, non una ricetta da eseguire a mente." },
-        { q: "GitLab gira nello stesso cluster che ArgoCD riconcilia. Qual e' il limite?",
-          o: ["ArgoCD non legge repo in HTTP", "Dipendenza circolare: se il cluster cade, cade anche la fonte di verita' da cui ricostruirlo", "Kargo non puo' scrivere nel repo", "Nessuno"], a: 1,
-          why: "Va bene per una demo autonoma. In produzione il repo sta fuori dal cluster che descrive, cosi' il cluster si ricostruisce da li'." }
+          o: ["Nessun effetto, è solo un'etichetta", "Il commit avviene, ma argocd-update viene rifiutato", "Kargo rimette l'annotazione", "GitLab rifiuta il push"], a: 1,
+          why: "L'annotazione è il consenso della Application a farsi pilotare da quello Stage. I passi git riescono, argocd-update no: il git è avanti, il cluster no." },
+        { q: "Perché i branch stage/* contengono YAML già renderizzato invece degli overlay?",
+          o: ["Perché ArgoCD non supporta kustomize", "Il diff di una promozione mostra esattamente cosa verrà applicato", "Per occupare meno spazio", "Per far condividere lo stesso branch a più stage"], a: 1,
+          why: "È il rendered manifests pattern: la review guarda YAML finito, non una ricetta da eseguire a mente." },
+        { q: "GitLab gira nello stesso cluster che ArgoCD riconcilia. Qual è il limite?",
+          o: ["ArgoCD non legge repo in HTTP", "Dipendenza circolare: se il cluster cade, cade anche il repo che lo ricostruisce", "Kargo non può scrivere nel repo", "Nessuno"], a: 1,
+          why: "Va bene per una demo autonoma. In produzione il repo sta fuori dal cluster che descrive, così il cluster si ricostruisce da lì." },
+        { q: "Voglio promuovere con lo stesso metodo l'upgrade di ArgoCD dalla 2 alla 3. Cosa cambia rispetto a podinfo?",
+          o: ["Niente: basta un Warehouse sul chart di ArgoCD", "Il metodo è lo stesso, ma servono cluster separati per stage: le CRD sono globali", "Kargo non può promuovere chart Helm", "ArgoCD si aggiorna da solo e non va promosso"], a: 1,
+          why: "Kargo promuove chart e immagini come qualsiasi Freight. Un componente di piattaforma con CRD globali però non può esistere in tre versioni nello stesso cluster: servono cluster per stage, ed è proprio sulla major che staging fa da cancello." }
       ] }
   ];
 
   var SAMPLE_LIVE = {
     ts: new Date().toISOString(),
-    warehouse: { name: "kargo-demo", constraint: "~1.27.0", freight: [
-      { name: "f2", alias: "brave-otter", tag: "1.27.5" },
-      { name: "f1", alias: "wiggly-woodpecker", tag: "1.26.3" } ] },
+    warehouse: { name: "kargo-demo", constraint: "~6.10.0", freight: [
+      { name: "f2", alias: "brave-otter", tag: "6.10.2", commit: "9e1f0c2" },
+      { name: "f1", alias: "wiggly-woodpecker", tag: "6.9.4", commit: "9e1f0c2" } ] },
     stages: [
-      { name: "dev", freight: "brave-otter", tag: "1.27.5", health: "Healthy", ready: 1, desired: 1, sync: "Synced", appHealth: "Healthy", commit: "3f9c2a1", auto: true, selfHeal: true },
-      { name: "staging", freight: "wiggly-woodpecker", tag: "1.26.3", health: "Healthy", ready: 2, desired: 2, sync: "Synced", appHealth: "Healthy", commit: "81be0d4", auto: false, selfHeal: false },
-      { name: "prod", freight: "wiggly-woodpecker", tag: "1.26.3", health: "Healthy", ready: 3, desired: 3, sync: "Synced", appHealth: "Healthy", commit: "c07a5e9", auto: false, selfHeal: false } ],
+      { name: "dev", freight: "brave-otter", tag: "6.10.2", config: "9e1f0c2", app: { version: "6.10.2", message: "GitOps dal vivo" }, health: "Healthy", ready: 1, desired: 1, sync: "Synced", appHealth: "Healthy", commit: "3f9c2a1", auto: true, selfHeal: true },
+      { name: "staging", freight: "wiggly-woodpecker", tag: "6.9.4", config: "9e1f0c2", app: { version: "6.9.4", message: "GitOps dal vivo" }, health: "Healthy", ready: 2, desired: 2, sync: "Synced", appHealth: "Healthy", commit: "81be0d4", auto: false, selfHeal: false },
+      { name: "prod", freight: "wiggly-woodpecker", tag: "6.9.4", config: "9e1f0c2", app: { version: "6.9.4", message: "GitOps dal vivo" }, health: "Healthy", ready: 3, desired: 3, sync: "Synced", appHealth: "Healthy", commit: "c07a5e9", auto: false, selfHeal: false } ],
     promotions: [
       { stage: "dev", freight: "brave-otter", phase: "Succeeded" },
       { stage: "prod", freight: "wiggly-woodpecker", phase: "Succeeded" } ],
-    events: ["15:03:58 dev  Scaled up replica set kargo-demo from 1 to 4", "15:03:59 dev  Scaled down replica set kargo-demo from 4 to 1"]
+    events: ["15:03:58 dev  Scaled up replica set kargo-demo from 1 to 4", "15:03:59 dev  Scaled down replica set kargo-demo from 4 to 1"],
+    cluster: {
+      nodes: [{ name: "a", type: "ek-standard-8", spot: true, ready: true }, { name: "b", type: "ek-standard-8", spot: true, ready: true },
+              { name: "c", type: "e2-standard-2", spot: false, ready: true }],
+      namespaces: [
+        { name: "gitlab", pods: [{ name: "gitlab-ce-1", workload: "gitlab-ce", status: "ready", restarts: 0 }] },
+        { name: "argocd", pods: ["application-controller", "repo-server", "server", "redis", "applicationset-controller", "dex-server", "notifications-controller"]
+            .map(function (w) { return { name: w, workload: "argocd-" + w, status: "ready", restarts: 0 }; }) },
+        { name: "kargo", pods: ["api", "controller", "management-controller", "webhooks-server", "external-webhooks-server"]
+            .map(function (w) { return { name: w, workload: "kargo-" + w, status: "ready", restarts: 0 }; }) },
+        { name: "cert-manager", pods: ["cert-manager", "cert-manager-cainjector", "cert-manager-webhook"]
+            .map(function (w) { return { name: w, workload: w, status: "ready", restarts: 0 }; }) },
+        { name: "kargo-demo", pods: [] },
+        { name: "kargo-demo-dev", pods: [{ name: "d1", workload: "kargo-demo", status: "ready", restarts: 0 }] },
+        { name: "kargo-demo-staging", pods: [{ name: "s1", workload: "kargo-demo", status: "ready", restarts: 0 }, { name: "s2", workload: "kargo-demo", status: "ready", restarts: 0 }] },
+        { name: "kargo-demo-prod", pods: [1, 2, 3].map(function (i) { return { name: "p" + i, workload: "kargo-demo", status: "ready", restarts: 0 }; }) },
+        { name: "nginx", pods: [{ name: "n1", workload: "nginx", status: "ready", restarts: 0 }, { name: "n2", workload: "nginx", status: "starting", restarts: 0 }] }
+      ],
+      kargo: { warehouses: 1, stages: 3, freight: 2, promotions: 4 },
+      applications: 8
+    }
   };
 
   var DEFAULT_URLS = { gitlab: "http://localhost:8080", argocd: "https://localhost:8443", kargo: "https://localhost:8081" };
@@ -346,6 +638,20 @@
   var $ = function (id) { return document.getElementById(id); };
 
   var rehearsal = location.protocol === "file:";
+  var DEFAULT_CREDS = {
+    gitlab: { url: DEFAULT_URLS.gitlab, user: "root", password: "" },
+    argocd: { url: DEFAULT_URLS.argocd, user: "admin", password: "" },
+    kargo: { url: DEFAULT_URLS.kargo, user: "admin", password: "" }
+  };
+  var CRED_NAMES = { gitlab: "GitLab", argocd: "ArgoCD", kargo: "Kargo" };
+  var SPECIAL = {
+    prepare: { num: "preparazione", title: "Preparazione dell'ambiente",
+      idea: "Cluster GKE, GitLab, ArgoCD e Kargo, prima che arrivi il pubblico." },
+    ready: { num: "tra poco", title: "GitOps dal vivo",
+      idea: "GitLab, ArgoCD e Kargo su GKE Autopilot: dal commit al cluster, senza kubectl apply." },
+    end: { num: "fine", title: "Grazie",
+      idea: "Domande? Il repository e lo script sono gli stessi che avete visto girare." }
+  };
   var forcedRehearsal = false;
   var local = { chapter: 0, phase: "intro", question: 0 };
   var driven = null;
@@ -386,14 +692,369 @@
   function current() {
     if (!inRehearsal() && driven) {
       var idx = CHAPTERS.findIndex(function (c) { return c.id === driven.chapter; });
-      return { chapter: idx < 0 ? 0 : idx, phase: driven.phase || "intro", question: Number(driven.question) || 0,
-               note: driven.note || "", urls: driven.urls || DEFAULT_URLS, provider: driven.provider || "" };
+      var urls = driven.urls && Object.keys(driven.urls).length ? driven.urls : DEFAULT_URLS;
+      return { mode: driven.mode || "present", chapter: idx < 0 ? 0 : idx, phase: driven.phase || "intro",
+               question: Number(driven.question) || 0, note: driven.note || "", urls: urls, provider: driven.provider || "",
+               next: driven.next || "", notes: Array.isArray(driven.notes) ? driven.notes : [],
+               creds: driven.creds && Object.keys(driven.creds).length ? driven.creds : null,
+               prep: Array.isArray(driven.prep) ? driven.prep : [], live: true };
     }
-    return { chapter: local.chapter, phase: local.phase, question: local.question, note: "", urls: DEFAULT_URLS, provider: "" };
+    return { mode: "present", chapter: local.chapter, phase: local.phase, question: local.question, note: "",
+             urls: DEFAULT_URLS, provider: "", next: "", notes: [], creds: null, prep: [], live: false };
+  }
+
+  // ---------- comandi dalla regia ----------
+  // Chiave token+id: gli id ripartono da 1 a ogni sessione di demo.sh, e la pagina resta aperta
+  // tra prepare e present.
+  var sentPrompt = "";
+  function promptKey(st) { return st.token + ":" + st.prompt.id; }
+  function sendCmd(key) {
+    var st = driven;
+    if (!st || !st.token || !st.prompt || !st.prompt.id || !st.next || sentPrompt === promptKey(st)) return;
+    sentPrompt = promptKey(st);
+    fetch("cmd", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: st.token, prompt: st.prompt.id, key: key }) })
+      .catch(function () { sentPrompt = ""; });
+    renderControls(current());
+  }
+  function renderControls(s) {
+    var box = $("controls");
+    var live = s.live && driven && driven.token && lastState && Date.now() - lastState < 8000;
+    box.hidden = !live;
+    if (box.hidden) return;
+    var waiting = !!(driven.next && driven.prompt && driven.prompt.id);
+    var sent = waiting && sentPrompt === promptKey(driven);
+    var next = $("ctl-next");
+    next.disabled = !waiting || sent;
+    next.classList.toggle("sent", sent);
+    next.classList.toggle("primary", waiting && !sent);
+    next.textContent = sent ? "Inviato" : waiting ? "Avanti" : "Lo script sta lavorando";
+    $("ctl-u").hidden = !(waiting && driven.prompt.u);
+    $("ctl-u").disabled = sent;
+    $("ctl-q").disabled = !waiting || sent;
+  }
+  $("ctl-next").addEventListener("click", function () { sendCmd("enter"); });
+  $("ctl-u").addEventListener("click", function () { sendCmd("u"); });
+  $("ctl-q").addEventListener("click", function () {
+    if (confirm("Chiudo demo.sh? Si riprende con ./demo.sh --from N")) sendCmd("q");
+  });
+
+  // ---------- pannello destro: pipeline o cluster ----------
+  var override = null;
+  function sceneKey(s) { return s.mode + ":" + (s.mode === "present" ? CHAPTERS[s.chapter].id : ""); }
+  function wantedPanel(s) {
+    if (override && override.scene === sceneKey(s)) return override.panel;
+    if (s.mode === "prepare") return "cluster";
+    if (s.mode !== "present") return "pipeline";
+    return CHAPTERS[s.chapter].panel || "pipeline";
+  }
+  function applyPanel(s) {
+    var panel = wantedPanel(s);
+    $("pane-cluster").hidden = panel !== "cluster";
+    $("pane-pipeline").hidden = panel !== "pipeline";
+    Array.prototype.forEach.call(document.querySelectorAll(".panel-tabs button"), function (b) {
+      b.setAttribute("aria-pressed", b.getAttribute("data-panel") === panel ? "true" : "false");
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".panel-tabs button"), function (b) {
+    b.addEventListener("click", function () {
+      var s = current();
+      override = { panel: b.getAttribute("data-panel"), scene: sceneKey(s) };
+      applyPanel(s);
+    });
+  });
+
+  var knownPods = null;
+  var ISO_ORDER = ["gitlab", "argocd", "kargo", "cert-manager", "kargo-demo", "nginx", "kargo-demo-dev", "kargo-demo-staging", "kargo-demo-prod"];
+  var ISO_SHORT = { "kargo-demo-dev": "dev", "kargo-demo-staging": "staging", "kargo-demo-prod": "prod" };
+
+  function cube(p) {
+    var c = el("span", "cube" + (p.restarts > 0 ? " restarted" : ""));
+    c.setAttribute("data-s", p.status);
+    c.title = p.workload + " · " + p.name + " · " + p.status + (p.restarts ? " · " + p.restarts + " restart" : "");
+    ["t", "s1", "s2", "s3", "s4"].forEach(function (f) { c.appendChild(el("i", f)); });
+    return c;
+  }
+
+  // Il piano è largo 540px: su colonne strette si scala per non uscire dal pannello.
+  function fitIso() {
+    var box = $("k-iso");
+    var w = box.clientWidth || 700;
+    var scale = Math.min(1, w / 820);
+    $("k-scene").style.transform = "scale(" + scale.toFixed(3) + ")";
+    box.style.height = Math.round(470 * Math.max(scale, .7)) + "px";
+  }
+  window.addEventListener("resize", fitIso);
+
+  function renderCluster(d) {
+    var k = d && d.cluster;
+    var nodes = $("k-nodes"), plane = $("k-ns");
+    nodes.textContent = "";
+    if (!k) { plane.textContent = ""; nodes.appendChild(el("span", "empty", "cluster non ancora raggiungibile")); return; }
+    var nl = Array.isArray(k.nodes) ? k.nodes : [];
+    nodes.appendChild(el("span", "eyebrow", nl.length + (nl.length === 1 ? " nodo" : " nodi")));
+    nl.forEach(function (n) {
+      var c = el("span", "knode" + (n.ready ? "" : " down"));
+      c.appendChild(el("i"));
+      c.appendChild(document.createTextNode(txt(n.type)));
+      if (n.spot) c.appendChild(el("b", "", "spot"));
+      c.title = n.name;
+      nodes.appendChild(c);
+    });
+    if (!nl.length) nodes.appendChild(el("span", "empty", "Autopilot crea i nodi quando arrivano i pod"));
+
+    var byName = {};
+    (Array.isArray(k.namespaces) ? k.namespaces : []).forEach(function (ns) { byName[ns.name] = ns; });
+    var seen = {};
+    plane.textContent = "";
+    ISO_ORDER.forEach(function (name) {
+      var ns = byName[name] || { name: name, pods: [] };
+      var pods = Array.isArray(ns.pods) ? ns.pods : [];
+      var isle = el("div", "isle" + (ISO_SHORT[name] ? " stage" : ""));
+      var objs = [];
+      if (name === "kargo-demo" && k.kargo) {
+        [["Warehouse", k.kargo.warehouses], ["Stage", k.kargo.stages], ["Freight", k.kargo.freight], ["Promotion", k.kargo.promotions]]
+          .forEach(function (o) { if (o[1]) objs.push(o[1] + " " + o[0]); });
+      }
+      if (name === "argocd" && k.applications) objs.push(k.applications + " Application");
+      if (!pods.length && !objs.length) isle.classList.add("empty-isle");
+
+      var wrap = el("div", "isle-pods");
+      pods.forEach(function (p) {
+        var c = cube(p);
+        if (knownPods && !knownPods[p.name]) c.classList.add("born");
+        seen[p.name] = true;
+        wrap.appendChild(c);
+      });
+      isle.appendChild(wrap);
+      var label = el("span", "isle-label", ISO_SHORT[name] || name);
+      if (pods.length) label.appendChild(el("small", "", pods.length + " pod"));
+      isle.appendChild(label);
+      if (objs.length) {
+        var o3 = el("div", "obj3d");
+        objs.forEach(function (t) { o3.appendChild(el("span", "", t)); });
+        isle.appendChild(o3);
+      }
+      plane.appendChild(isle);
+    });
+    knownPods = seen;
+    fitIso();
+  }
+
+  // ---------- transizione tra scene ----------
+  var lastScene = null;
+  function playWarp(num, title, sub) {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    var w = $("warp");
+    $("warp-num").textContent = num;
+    $("warp-title").textContent = title;
+    $("warp-sub").textContent = sub;
+    w.classList.remove("go");
+    void w.offsetWidth;
+    w.classList.add("go");
+  }
+  function sceneChanged(s) {
+    var scene = s.mode + ":" + (s.mode === "present" ? s.chapter : "");
+    if (scene === lastScene) return;
+    var first = lastScene === null;
+    lastScene = scene;
+    if (first) return;
+    if (s.mode === "present") {
+      playWarp(String(s.chapter + 1).padStart(2, "0"), CHAPTERS[s.chapter].title, "capitolo " + (s.chapter + 1) + " di " + CHAPTERS.length);
+    } else if (SPECIAL[s.mode]) {
+      playWarp(s.mode === "end" ? "//" : ">_", SPECIAL[s.mode].title, SPECIAL[s.mode].num);
+    }
+  }
+
+  // ---------- vista regia ----------
+  function copyText(text, btn) {
+    function done() { btn.classList.add("done"); setTimeout(function () { btn.classList.remove("done"); }, 1200); }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
+    } else { fallbackCopy(text); done(); }
+  }
+  function fallbackCopy(text) {
+    var ta = el("textarea");
+    ta.value = text;
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch (e) { /* copia non disponibile */ }
+    ta.remove();
+  }
+  // Il valore si legge al clic dalle credenziali correnti: un pulsante disegnato prima che
+  // arrivasse lo stato non deve copiare il segnaposto.
+  var liveCreds = null;
+  function copyBtn(label, value, masked, svc, field) {
+    var b = el("button", "copy");
+    b.type = "button";
+    b.appendChild(el("span", "", label));
+    b.appendChild(el("span", "", masked ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022  clic per copiare" : value));
+    b.title = "Copia " + label;
+    b.addEventListener("click", function () {
+      var v = svc && liveCreds && liveCreds[svc] ? liveCreds[svc][field] : value;
+      if (!v || (svc && !liveCreds)) { b.classList.add("done"); return; }
+      copyText(v, b);
+    });
+    return b;
+  }
+
+  var credsKey = "";
+  function renderCreds(creds) {
+    var key = JSON.stringify(creds) + (liveCreds ? "live" : "");
+    if (key === credsKey) return;
+    credsKey = key;
+    var box = $("creds");
+    box.textContent = "";
+    ["gitlab", "argocd", "kargo"].forEach(function (k) {
+      var c = creds[k];
+      if (!c) return;
+      var card = el("div", "cred");
+      var top = el("div", "cred-top");
+      top.appendChild(el("b", "", CRED_NAMES[k]));
+      var a = el("a", "", "Apri");
+      a.href = c.url; a.target = "_blank"; a.rel = "noopener";
+      top.appendChild(a);
+      card.appendChild(top);
+      card.appendChild(copyBtn("url", c.url || "", false, k, "url"));
+      card.appendChild(copyBtn("utente", c.user || "", false, k, "user"));
+      card.appendChild(copyBtn("password", liveCreds ? c.password : "solo con demo.sh in esecuzione", !!liveCreds, k, "password"));
+      box.appendChild(card);
+    });
+  }
+
+  function prepSummary(prep) {
+    var total = 0, done = 0, running = null, failed = null;
+    prep.forEach(function (p, i) {
+      total += Number(p.minutes) || 0;
+      if (p.status === "done") done += Number(p.minutes) || 0;
+      if (p.status === "running") running = { i: i, p: p };
+      if (p.status === "failed") failed = { i: i, p: p };
+    });
+    return { total: total, done: done, running: running, failed: failed };
+  }
+
+  function nowText(s) {
+    var stale = s.live && lastState && Date.now() - lastState > 8000;
+    if (!s.live) {
+      if (inRehearsal() && !rehearsal) return "Modalità prova: m per tornare a seguire lo script.";
+      var c = CHAPTERS[s.chapter], q = c.questions[s.question];
+      if (s.phase === "intro") return "Prova: racconta i tre punti, poi spazio per la domanda.";
+      if (s.phase === "ask") return "Prova: fai votare, poi spazio per la risposta.";
+      return "Prova: spazio per andare avanti, frecce per cambiare capitolo.";
+    }
+    if (stale) {
+      if (s.mode === "prepare" && s.prep.length && s.prep.every(function (p) { return p.status === "done"; }))
+        return "Ambiente pronto e banco di preparazione chiuso. Lancia ./demo.sh: questa scheda si ricollega da sola.";
+      if (s.mode === "end") return "Demo chiusa. Per smontare tutto: ./demo.sh teardown --provider gke";
+      return "demo.sh non risponde: guarda il terminale. Questa scheda si ricollega da sola quando riparte.";
+    }
+    if (s.mode === "prepare") {
+      if (s.next) return s.next;
+      var sum = prepSummary(s.prep);
+      if (sum.running) {
+        var mins = sum.running.p.started ? Math.floor((Date.now() / 1000 - sum.running.p.started) / 60) : 0;
+        return "Niente da fare: il passo " + (sum.running.i + 1) + " di " + s.prep.length + " gira da solo (" +
+          sum.running.p.title + "). Circa " + sum.running.p.minutes + " min, in corso da " + mins + " min.";
+      }
+      return "Preparazione in corso: tieni aperto il terminale.";
+    }
+    if (s.next) return "Invio nel terminale: " + s.next;
+    if (s.note) return s.note;
+    return "Lo script sta lavorando: aspetta il prossimo Invio.";
+  }
+
+  function renderRegia(s) {
+    $("now-text").textContent = nowText(s);
+
+    var before = $("before");
+    before.hidden = s.live;
+    if (!s.live && !before.childElementCount) {
+      [["Prepara l'ambiente, 33 minuti prima della sessione", "./demo.sh prepare --provider gke"],
+       ["Quando il pubblico è in sala, avvia la presentazione", "./demo.sh"],
+       ["Il banco si apre da solo e segue lo script: da qui si comanda con Avanti", "http://127.0.0.1:8090/"]].forEach(function (b) {
+        var li = el("li");
+        var d = el("div", "", b[0]);
+        d.appendChild(copyBtn("cmd", b[1]));
+        li.appendChild(d);
+        before.appendChild(li);
+      });
+    }
+
+    liveCreds = s.creds || null;
+    var creds = s.creds || (s.live ? null : DEFAULT_CREDS);
+    $("access-btn").hidden = !creds;
+    if (!creds) toggleAccess(false);
+    else renderCreds(creds);
+  }
+
+  function toggleAccess(force) {
+    if ($("access-btn").hidden) return;
+    var open = typeof force === "boolean" ? force : $("access").hidden;
+    $("access").hidden = !open;
+    $("access-back").hidden = !open;
+    $("access-btn").setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  $("access-btn").addEventListener("click", function () { toggleAccess(); });
+  $("access-close").addEventListener("click", function () { toggleAccess(false); });
+  $("access-back").addEventListener("click", function () { toggleAccess(false); });
+
+  function renderPrep(s) {
+    var list = $("prep"), bar = $("prep-bar");
+    var on = s.mode === "prepare";
+    list.hidden = !on; bar.hidden = !on;
+    if (!on) return;
+    var sum = prepSummary(s.prep);
+    $("prep-fill").style.width = (sum.total ? Math.round(sum.done / sum.total * 100) : 0) + "%";
+    list.textContent = "";
+    s.prep.forEach(function (p) {
+      var li = el("li");
+      li.setAttribute("data-s", p.status);
+      li.appendChild(el("span", "st"));
+      li.appendChild(el("span", "", p.title));
+      var m = p.status === "running" && p.started ? Math.floor((Date.now() / 1000 - p.started) / 60) + " / " + p.minutes + " min" : p.minutes + " min";
+      li.appendChild(el("span", "min", p.status === "failed" ? "fallito" : m));
+      list.appendChild(li);
+    });
+  }
+
+  function renderSpecial(s) {
+    var sp = SPECIAL[s.mode];
+    Array.prototype.forEach.call($("rail").children, function (li) {
+      li.setAttribute("data-state", s.mode === "end" ? "done" : "todo");
+    });
+    $("ch-num").textContent = sp.num;
+    $("ch-title").textContent = sp.title;
+    $("ch-idea").textContent = sp.idea;
+    var pl = $("ch-points");
+    pl.textContent = "";
+    if (s.mode === "ready") {
+      CHAPTERS.forEach(function (c, i) { pl.appendChild(el("li", "", (i + 1) + ". " + c.title)); });
+    } else if (s.mode === "end") {
+      ["Il git è l'unica fonte di verità: anche per le Application di ArgoCD",
+       "Kargo promuove con commit: ogni ambiente ha la sua storia nel branch",
+       "Il drift si vede sempre; correggerlo da solo è una scelta per ambiente"].forEach(function (t) { pl.appendChild(el("li", "", t)); });
+    }
+    pl.hidden = s.mode === "prepare";
+    $("question").hidden = true;
+    $("look").textContent = "";
+    $("note").hidden = true;
+    renderPrep(s);
   }
 
   function renderStory() {
     var s = current();
+    sceneChanged(s);
+    renderRegia(s);
+    renderControls(s);
+    applyPanel(s);
+    if (s.provider) $("provider").textContent = s.provider;
+    if (s.mode !== "present" && SPECIAL[s.mode]) {
+      rendered = "";
+      renderSpecial(s);
+      return;
+    }
+    renderPrep(s);
     var c = CHAPTERS[s.chapter];
     var qi = Math.min(Math.max(s.question, 0), c.questions.length - 1);
     var key = [s.chapter, s.phase, qi, s.note, JSON.stringify(s.urls)].join("|");
@@ -468,6 +1129,7 @@
   function renderLive() {
     var d = inRehearsal() ? SAMPLE_LIVE : liveData;
     if (!d) return;
+    renderCluster(d);
     var wh = d.warehouse || {};
     $("wh-constraint").textContent = "vincolo " + txt(wh.constraint);
     var freight = Array.isArray(wh.freight) ? wh.freight : [];
@@ -476,7 +1138,7 @@
     var names = freight.map(function (f) { return f.name; });
     if (!freight.length) chips.appendChild(el("span", "empty", "nessun Freight ancora"));
     freight.slice(0, 6).forEach(function (f, i) {
-      var chip = el("span", "chip" + (i === 0 ? " latest" : ""), txt(f.alias) + "  " + txt(f.tag));
+      var chip = el("span", "chip" + (i === 0 ? " latest" : ""), txt(f.alias) + "  " + txt(f.tag) + (f.commit ? "  @" + f.commit : ""));
       if (knownFreight && knownFreight.indexOf(f.name) === -1) chip.classList.add("new");
       chips.appendChild(chip);
     });
@@ -514,7 +1176,7 @@
 
       var body = el("div", "node-body");
       var tag = el("span", "tag");
-      tag.appendChild(el("small", "", "nginx"));
+      tag.appendChild(el("small", "", "podinfo"));
       tag.appendChild(document.createTextNode(txt(st.tag)));
       if (st.tag && devTag && st.tag !== devTag) {
         tag.classList.add("behind");
@@ -536,14 +1198,32 @@
 
       var meta = el("div", "meta");
       meta.appendChild(el("span", "", "freight " + txt(st.freight)));
-      meta.appendChild(el("span", "", "commit " + txt(st.commit)));
-      if (st.tag && devTag && st.tag !== devTag) meta.appendChild(el("span", "", "versione precedente"));
+      meta.appendChild(el("span", "", "config @" + txt(st.config)));
+      meta.appendChild(el("span", "", "branch " + txt(st.commit)));
       node.appendChild(meta);
+
+      // La versione che podinfo dichiara di sé, letta dal vivo: conferma che il manifest è in esecuzione.
+      var appRow = el("div", "app-row");
+      if (st.app && st.app.version) {
+        var match = st.app.version === st.tag;
+        appRow.appendChild(el("span", match ? "app-ok" : "app-warn", (match ? "\u2713 " : "! ") + "l'app risponde " + st.app.version));
+        appRow.appendChild(el("span", "app-msg", "\u00ab" + txt(st.app.message) + "\u00bb"));
+      } else {
+        appRow.appendChild(el("span", "app-msg", "l'app non risponde ancora"));
+      }
+      var appUrl = driven && driven.apps && driven.apps[st.name];
+      if (appUrl) {
+        var link = el("a", "app-link", "apri app");
+        link.href = appUrl; link.target = "_blank"; link.rel = "noopener";
+        appRow.appendChild(link);
+      }
+      node.appendChild(appRow);
 
       var sig = [st.tag, st.ready, st.desired, st.sync].join("|");
       if (prevStage[st.name] !== undefined && prevStage[st.name] !== sig) {
         node.classList.add("flash");
         setTimeout(function () { node.classList.remove("flash"); }, 2000);
+        if (prevStage[st.name] === "" || prevStage[st.name].split("|")[0] !== String(st.tag)) arrow.classList.add("flow");
       }
       prevStage[st.name] = sig;
       box.appendChild(node);
@@ -569,6 +1249,7 @@
   }
 
   function renderLink() {
+    $("keys").hidden = !inRehearsal();
     var p = $("link");
     if (inRehearsal()) { p.textContent = "prova · dati di esempio"; p.setAttribute("data-tone", "warn"); return; }
     var age = lastLive ? Math.round((Date.now() - lastLive) / 1000) : null;
@@ -597,9 +1278,15 @@
       });
     }, 2000);
   }
-  setInterval(renderLink, 1000);
+  setInterval(function () {
+    renderLink();
+    var s = current();
+    renderRegia(s);
+    renderControls(s);
+    if (s.mode === "prepare") renderPrep(s);
+  }, 1000);
 
-  // ---------- tastiera: modalita' prova ----------
+  // ---------- tastiera: modalità prova ----------
   function step(dir) {
     var c = CHAPTERS[local.chapter];
     if (dir > 0) {
@@ -612,6 +1299,15 @@
   document.addEventListener("keydown", function (e) {
     if (e.altKey || e.ctrlKey || e.metaKey) return;
     if (e.key === "t") { toggleTheme(); return; }
+    if (e.key === "a") { toggleAccess(); return; }
+    if (e.key === "Escape") { toggleAccess(false); return; }
+    if (!$("access").hidden) return;
+    if (!inRehearsal() && driven && driven.token &&
+        (e.key === "Enter" || e.key === " " || e.key === "ArrowRight" || e.key === "PageDown")) {
+      e.preventDefault();
+      sendCmd("enter");
+      return;
+    }
     if (e.key === "m" && !rehearsal) {
       forcedRehearsal = !forcedRehearsal;
       if (forcedRehearsal) { var s = current(); local.chapter = s.chapter; }
