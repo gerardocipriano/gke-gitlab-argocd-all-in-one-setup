@@ -18,7 +18,7 @@ prereq_check_all() {
     fi
     log_success "gcloud authenticated"
 
-    # Nessun gcloud config set: ogni comando passa --project, cosi' la configurazione
+    # Nessun gcloud config set: ogni comando passa --project, così la configurazione
     # attiva di chi lancia la demo resta com'era.
     log_step "PREREQ: Enabling GCP APIs..."
     if ! gcloud services enable container.googleapis.com compute.googleapis.com \

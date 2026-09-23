@@ -1,6 +1,6 @@
 # Risorse di controllo della demo Kargo: Project, Warehouse, PromotionTask e Stage.
 # Non contiene carichi di lavoro: descrive solo cosa osservare e come promuovere.
-# Il Project e' cluster-scoped e crea il namespace kargo-demo, quindi va sincronizzato
+# Il Project è cluster-scoped e crea il namespace kargo-demo, quindi va sincronizzato
 # prima delle risorse namespaced (sync-wave).
 apiVersion: argoproj.io/v1alpha1
 kind: Application

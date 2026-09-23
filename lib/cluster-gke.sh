@@ -17,7 +17,7 @@ cluster_status() {
 
 cluster_get_credentials() {
     log_info "Getting GKE cluster credentials..."
-    # Il control plane e' raggiungibile solo via DNS endpoint: niente IP pubblico da
+    # Il control plane è raggiungibile solo via DNS endpoint: niente IP pubblico da
     # autorizzare, l'accesso passa da IAM (ruolo container.developer o superiore).
     gcloud container clusters get-credentials "${GKE_CLUSTER_NAME}" \
         --project="${GKE_PROJECT_ID}" --region="${GKE_REGION}" --dns-endpoint
@@ -69,7 +69,7 @@ cluster_create() {
     cluster_get_credentials
 }
 
-# Su Autopilot lo Spot non e' un'opzione di cluster: va chiesto dai singoli pod.
+# Su Autopilot lo Spot non è un'opzione di cluster: va chiesto dai singoli pod.
 # I workload arrivano da manifest upstream e chart Helm che non espongono un
 # nodeSelector, quindi si patcha il pod template dopo l'installazione.
 cluster_schedule_spot() {
@@ -103,14 +103,14 @@ cluster_delete() {
     fi
 }
 
-# I PD dei PVC sopravvivono al cluster se il namespace non e' stato cancellato prima.
-# Si elencano e basta: cancellarli e' una scelta di chi li vede.
+# I PD dei PVC sopravvivono al cluster se il namespace non è stato cancellato prima.
+# Si elencano e basta: cancellarli è una scelta di chi li vede.
 cluster_report_orphan_disks() {
     local disks
     disks=$(gcloud compute disks list --project="${GKE_PROJECT_ID}" \
         --filter="name~^pvc- AND -users:*" --format="value(name,zone.basename())" 2>/dev/null || true)
     if [[ -n "${disks}" ]]; then
-        log_warn "Dischi PVC non piu' agganciati (costano finche' esistono):"
+        log_warn "Dischi PVC non più agganciati (costano finché esistono):"
         printf '  %s\n' "${disks}" >&2
         log_warn "Per cancellarli: gcloud compute disks delete NOME --zone ZONA --project ${GKE_PROJECT_ID}"
     else
@@ -138,7 +138,7 @@ cluster_verify() {
         return 1
     fi
     kubectl cluster-info
-    # Autopilot provisiona i nodi on demand: a cluster vuoto la lista e' vuota.
+    # Autopilot provisiona i nodi on demand: a cluster vuoto la lista è vuota.
     kubectl get nodes -o wide
     log_success "VERIFY: Cluster is healthy"
 }

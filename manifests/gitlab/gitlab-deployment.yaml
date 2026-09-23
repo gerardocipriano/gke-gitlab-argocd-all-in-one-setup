@@ -83,7 +83,7 @@ spec:
                 sidekiq['max_concurrency'] = 5
                 prometheus_monitoring['enable'] = false
                 # Omnibus dimensiona puma sul numero di CPU del nodo, non sul limit del
-                # container: su un nodo grosso apre piu' worker di quanti la memoria
+                # container: su un nodo grosso apre più worker di quanti la memoria
                 # richiesta ne sostenga e il pod viene evicted. Due worker bastano.
                 puma['worker_processes'] = 2
                 registry['enable'] = false
@@ -106,8 +106,8 @@ spec:
             - name: gitlab-config
               mountPath: /etc/gitlab
           # Il primo avvio (reconfigure e migrazioni) supera i 7 minuti: con la sola liveness
-          # il container veniva ucciso a meta' e ripartiva da capo. La startupProbe concede
-          # fino a 20 minuti e tiene ferme le altre due finche' non passa.
+          # il container veniva ucciso a metà e ripartiva da capo. La startupProbe concede
+          # fino a 20 minuti e tiene ferme le altre due finché non passa.
           startupProbe:
             httpGet:
               path: /

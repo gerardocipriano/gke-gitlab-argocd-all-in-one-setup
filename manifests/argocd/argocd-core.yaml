@@ -9,7 +9,7 @@ metadata:
 ---
 # Note: ArgoCD core installation is done via kubectl apply
 # This file contains post-install configuration
-# Purpose: gitlab-repo-credentials secret is created dynamically by deploy-k8s-bootstrap.sh
+# Purpose: gitlab-repo-credentials secret is created dynamically by bootstrap.sh
 # using the PAT generated via gitlab-rails runner (not stored in this file)
 
 ---

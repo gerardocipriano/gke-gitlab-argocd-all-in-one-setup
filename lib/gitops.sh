@@ -63,7 +63,7 @@ gitops_create_content_configmap() {
     for app_dir in "${manifests_dir}"/*/; do
         local app_name
         app_name=$(basename "${app_dir}")
-        # Skip gitops-inventory — it's handled separately
+        # Skip gitops-inventory: it's handled separately
         [[ "${app_name}" == "gitops-inventory" ]] && continue
 
         log_debug "Packing manifests/${app_name}/"

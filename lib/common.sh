@@ -111,7 +111,7 @@ print_summary_box() {
 }
 
 # Purpose: trova una porta TCP libera sull'host, partendo da quella preferita.
-# Serve perche' i port-forward della demo collidono spesso con servizi gia' in ascolto.
+# Serve perché i port-forward della demo collidono spesso con servizi già in ascolto.
 port_in_listen() {
     local port="$1"
     if command_exists ss; then
@@ -153,8 +153,8 @@ start_port_forward() {
         "${local_port}:${remote_port}" > "${log_dir}/pf-${service}.log" 2>&1 &
     disown
 
-    # Attende che il forward sia in ascolto: la chiamata successiva vedra' la porta occupata
-    # e non la riassegnera' a un altro servizio.
+    # Attende che il forward sia in ascolto: la chiamata successiva vedrà la porta occupata
+    # e non la riassegnerà a un altro servizio.
     local attempt=0
     while (( attempt < 10 )); do
         port_in_listen "${local_port}" && break
