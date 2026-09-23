@@ -97,8 +97,24 @@ cluster_delete() {
         gcloud container clusters delete "${GKE_CLUSTER_NAME}" \
             --project="${GKE_PROJECT_ID}" --region="${GKE_REGION}" --quiet
         log_success "GKE cluster deleted"
+        cluster_report_orphan_disks
     else
         log_warn "GKE cluster does not exist"
+    fi
+}
+
+# I PD dei PVC sopravvivono al cluster se il namespace non e' stato cancellato prima.
+# Si elencano e basta: cancellarli e' una scelta di chi li vede.
+cluster_report_orphan_disks() {
+    local disks
+    disks=$(gcloud compute disks list --project="${GKE_PROJECT_ID}" \
+        --filter="name~^pvc- AND -users:*" --format="value(name,zone.basename())" 2>/dev/null || true)
+    if [[ -n "${disks}" ]]; then
+        log_warn "Dischi PVC non piu' agganciati (costano finche' esistono):"
+        printf '  %s\n' "${disks}" >&2
+        log_warn "Per cancellarli: gcloud compute disks delete NOME --zone ZONA --project ${GKE_PROJECT_ID}"
+    else
+        log_success "Nessun disco PVC orfano nel progetto"
     fi
 }
 

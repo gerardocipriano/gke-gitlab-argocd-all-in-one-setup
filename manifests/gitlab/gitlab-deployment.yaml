@@ -105,11 +105,20 @@ spec:
               mountPath: /var/log/gitlab
             - name: gitlab-config
               mountPath: /etc/gitlab
+          # Il primo avvio (reconfigure e migrazioni) supera i 7 minuti: con la sola liveness
+          # il container veniva ucciso a meta' e ripartiva da capo. La startupProbe concede
+          # fino a 20 minuti e tiene ferme le altre due finche' non passa.
+          startupProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 60
           livenessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 300
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 5
@@ -117,7 +126,6 @@ spec:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: 180
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3

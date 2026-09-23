@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Purpose: prerequisites for GKE provider (gcloud, kubectl, argocd CLI, GCP APIs)
+# Purpose: prerequisites for GKE provider (gcloud, kubectl, helm, jq, GCP APIs)
 
 prereq_check_all() {
     log_step "PREREQUISITES [gke]: Checking all..."
@@ -18,17 +18,14 @@ prereq_check_all() {
     fi
     log_success "gcloud authenticated"
 
-    log_info "Ensuring gcloud beta..."
-    gcloud components install beta --quiet 2>/dev/null || true
-
-    log_info "Setting project to '${GKE_PROJECT_ID}'..."
-    gcloud config set project "${GKE_PROJECT_ID}" --quiet
-
+    # Nessun gcloud config set: ogni comando passa --project, cosi' la configurazione
+    # attiva di chi lancia la demo resta com'era.
     log_step "PREREQ: Enabling GCP APIs..."
-    local apis=("container.googleapis.com" "compute.googleapis.com" "iam.googleapis.com")
-    for api in "${apis[@]}"; do
-        gcloud services enable "${api}" --project="${GKE_PROJECT_ID}" --quiet 2>/dev/null || true
-    done
+    if ! gcloud services enable container.googleapis.com compute.googleapis.com \
+        --project="${GKE_PROJECT_ID}" --quiet; then
+        log_error "Impossibile abilitare le API su ${GKE_PROJECT_ID}: controlla progetto e permessi"
+        exit 1
+    fi
     log_success "GCP APIs enabled"
 
     log_step "PREREQ: Checking kubectl..."
@@ -56,6 +53,16 @@ prereq_check_all() {
         return 1
     fi
     log_success "Helm ready: $(helm version --short)"
+
+    # jq e python3 servono al banco di regia (collector e server http locale).
+    local tool
+    for tool in jq python3 curl; do
+        if ! command_exists "${tool}"; then
+            log_error "${tool} non trovato: serve a demo.sh"
+            return 1
+        fi
+    done
+    log_success "jq, python3 e curl presenti"
 
     log_success "PREREQUISITES [gke]: All checks passed"
 }

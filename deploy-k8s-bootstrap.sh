@@ -23,13 +23,16 @@ readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
 source "${SCRIPT_DIR}/lib/config.sh"
 
-# Parse --provider flag before sourcing provider-specific modules
-for arg in "$@"; do
-    case "${arg}" in
-        --provider=*) CLUSTER_PROVIDER="${arg#*=}"; shift ;;
+# --provider va letto prima di caricare i moduli del provider, in qualunque posizione.
+ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --provider=*) CLUSTER_PROVIDER="${1#*=}"; shift ;;
         --provider)   CLUSTER_PROVIDER="${2:-}"; shift 2 ;;
+        *)            ARGS+=("$1"); shift ;;
     esac
 done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
 
 if [[ "${CLUSTER_PROVIDER}" != "kind" && "${CLUSTER_PROVIDER}" != "gke" ]]; then
     echo "ERROR: CLUSTER_PROVIDER must be 'kind' or 'gke' (got: '${CLUSTER_PROVIDER}')" >&2
@@ -241,11 +244,10 @@ print_usage() {
 }
 
 # Sposta i componenti di piattaforma su nodi Spot. No-op sul provider kind.
-# I workload creati da Argo CD (demo nginx, stage Kargo) non sono qui: una patch
-# diretta verrebbe riallineata al prossimo sync.
+# GitLab non e' qui: lo patcha gitlab_deploy prima di attendere il boot. I workload creati
+# da Argo CD (demo nginx, stage Kargo) restano fuori: la patch verrebbe riallineata.
 deploy_spot_scheduling() {
     case "$1" in
-        gitlab) cluster_schedule_spot "${GITLAB_NAMESPACE}" ;;
         argocd) cluster_schedule_spot "${ARGOCD_NAMESPACE}" ;;
         kargo)
             cluster_schedule_spot "${CERT_MANAGER_NAMESPACE}"
@@ -271,7 +273,7 @@ main() {
             cluster_create
             cluster_verify
             ;;
-        gitlab)      gitlab_deploy; deploy_spot_scheduling gitlab ;;
+        gitlab)      gitlab_deploy ;;
         gitops)      gitops_create_repository ;;
         argocd)      argocd_deploy; deploy_spot_scheduling argocd ;;
         kargo)       kargo_deploy; deploy_spot_scheduling kargo ;;
@@ -288,7 +290,6 @@ main() {
             cluster_create
             cluster_verify
             gitlab_deploy
-            deploy_spot_scheduling gitlab
             gitops_create_repository
             argocd_deploy
             deploy_spot_scheduling argocd

@@ -40,7 +40,9 @@ spec:
       as: commit
       config:
         path: ./out
-        message: ${{ task.outputs.update.commitMessage }}
+        # Il default (outputs.update.commitMessage) cita il path in ./src, che su questo
+        # branch non esiste: il messaggio deve dire cosa e' stato promosso e dove.
+        message: "promote nginx ${{ imageFrom(vars.imageRepo).Tag }} to ${{ ctx.stage }} (freight ${{ ctx.targetFreight.name }})"
     - uses: git-push
       config:
         path: ./out

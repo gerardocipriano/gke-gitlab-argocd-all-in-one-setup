@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
 # Purpose: Kargo install, password hash, git credentials, and info
 
+# Il binario docker puo' esserci con il daemon spento: si controlla docker info, non la
+# presenza del comando, altrimenti l'hash esce vuoto e set -e chiude lo script in silenzio.
 kargo_generate_password_hash() {
     if command_exists htpasswd; then
         htpasswd -bnBC 10 '' "${KARGO_ADMIN_PASSWORD}" | tr -d ':\n'
-    elif command_exists docker; then
+    elif command_exists python3 && python3 -c 'import bcrypt' 2>/dev/null; then
+        KARGO_PW="${KARGO_ADMIN_PASSWORD}" python3 -c \
+            'import bcrypt, os; print(bcrypt.hashpw(os.environ["KARGO_PW"].encode(), bcrypt.gensalt(10)).decode(), end="")'
+    elif command_exists docker && docker info &>/dev/null; then
         docker run --rm httpd:2.4-alpine \
             htpasswd -bnBC 10 '' "${KARGO_ADMIN_PASSWORD}" | tr -d ':\n'
-    else
-        log_warn "Using precomputed hash for default Kargo admin password"
+    elif [[ "${KARGO_ADMIN_PASSWORD}" == "Karg0D3m02025xZ" ]]; then
+        log_warn "htpasswd, python3-bcrypt e docker assenti: uso l'hash precalcolato della password di default"
         echo "${KARGO_ADMIN_PASSWORD_HASH}"
+    else
+        log_error "Serve htpasswd, python3 con bcrypt o docker attivo per l'hash di KARGO_ADMIN_PASSWORD"
+        return 1
     fi
 }
 
@@ -64,7 +72,11 @@ kargo_deploy() {
     kargo_install_cert_manager
 
     local password_hash
-    password_hash=$(kargo_generate_password_hash)
+    password_hash=$(kargo_generate_password_hash) || return 1
+    if [[ -z "${password_hash}" ]]; then
+        log_error "Hash della password admin di Kargo vuoto"
+        return 1
+    fi
 
     local token_signing_key
     # I caratteri =+/ romperebbero il parsing di helm --set
@@ -99,10 +111,17 @@ kargo_deploy() {
 }
 
 kargo_create_git_credentials() {
+    # kargo-project ha tentato il sync prima che esistessero le CRD di Kargo ed e' in retry
+    # con backoff fino a 2 minuti: si chiede un sync subito, perche' le credenziali devono
+    # esistere prima del primo Freight, altrimenti la promozione automatica di dev fallisce
+    # sul clone e non viene ritentata.
+    kubectl patch application kargo-project -n "${ARGOCD_NAMESPACE}" --type merge \
+        -p '{"operation":{"initiatedBy":{"username":"bootstrap"},"sync":{}}}' &>/dev/null || true
+
     log_info "Waiting for Kargo project namespace to be created..."
     local elapsed=0
     local interval=5
-    while [[ ${elapsed} -lt 120 ]]; do
+    while [[ ${elapsed} -lt 300 ]]; do
         if kubectl get namespace "${KARGO_PROJECT}" &>/dev/null; then
             break
         fi
@@ -111,9 +130,8 @@ kargo_create_git_credentials() {
     done
 
     if ! kubectl get namespace "${KARGO_PROJECT}" &>/dev/null; then
-        log_warn "Kargo project namespace '${KARGO_PROJECT}' not found after 120s"
-        log_warn "Run manually once the Project resource is synced: kubectl create namespace ${KARGO_PROJECT}"
-        return 0
+        log_error "Namespace del progetto '${KARGO_PROJECT}' assente dopo 300s: controlla l'Application kargo-project"
+        return 1
     fi
 
     local pat

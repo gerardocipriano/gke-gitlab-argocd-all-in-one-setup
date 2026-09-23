@@ -9,7 +9,8 @@ readonly GITLAB_NAMESPACE="${GITLAB_NAMESPACE:-gitlab}"
 readonly GITLAB_ROOT_PASSWORD="${GITLAB_ROOT_PASSWORD:-Gk3B00tstr4p2025xZ}"
 readonly GITLAB_PAT_SECRET_NAME="gitlab-bootstrap-pat"
 readonly ARGOCD_NAMESPACE="${ARGOCD_NAMESPACE:-argocd}"
-readonly ARGOCD_VERSION="${ARGOCD_VERSION:-stable}"
+# Versione fissata: "stable" e' un puntatore mobile e la demo cambierebbe sotto i piedi.
+readonly ARGOCD_VERSION="${ARGOCD_VERSION:-v3.5.3}"
 readonly GITLAB_LOCAL_PORT="${GITLAB_LOCAL_PORT:-8080}"
 readonly ARGOCD_LOCAL_PORT="${ARGOCD_LOCAL_PORT:-8443}"
 

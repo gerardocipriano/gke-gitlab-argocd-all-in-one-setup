@@ -19,10 +19,10 @@ gitops_create_repository() {
         return 1
     fi
 
-    gitlab_wait_for_api "${gitlab_pod}" "${pat}" || return 1
+    gitlab_wait_for_api "${pat}" || return 1
     gitops_create_project "${gitlab_pod}" "${pat}"
     gitops_create_content_configmap
-    gitops_push_via_job "${pat}"
+    gitops_push_via_job
 
     log_success "GITOPS: Repository initialized with all manifests"
 }
@@ -108,8 +108,6 @@ gitops_create_content_configmap() {
 }
 
 gitops_push_via_job() {
-    local pat="$1"
-
     log_info "Pushing content to GitLab via K8s Job..."
     kubectl delete job gitops-init -n "${GITLAB_NAMESPACE}" 2>/dev/null || true
 
@@ -131,9 +129,16 @@ spec:
       containers:
       - name: git
         image: alpine:3.20
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
         env:
         - name: GITLAB_PAT
-          value: "${pat}"
+          valueFrom:
+            secretKeyRef:
+              name: ${GITLAB_PAT_SECRET_NAME}
+              key: token
         - name: GITLAB_HOST
           value: "gitlab.${GITLAB_NAMESPACE}.svc.cluster.local"
         - name: GIT_TERMINAL_PROMPT
