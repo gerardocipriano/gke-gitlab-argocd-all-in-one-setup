@@ -28,7 +28,7 @@ Gli Stage rappresentano gli ambienti della pipeline di promozione. Nella demo ci
 
 ### Promotion
 
-La Promotion e' l'atto di avanzare una Freight da uno Stage al successivo. Avviene manualmente dall'interfaccia UI di Kargo o tramite un comando kubectl. Quando si promuove, Kargo esegue i passi definiti nella PromotionTask associata allo Stage.
+La Promotion e' l'atto di avanzare una Freight da uno Stage al successivo. Avviene dalla UI di Kargo, dalla CLI `kargo promote` o dall'API che sta dietro a entrambe, sempre con un utente Kargo autorizzato sul progetto. In dev parte da sola, per la promotionPolicy nel `ProjectConfig`. Quando si promuove, Kargo esegue i passi definiti nella PromotionTask associata allo Stage.
 
 ### PromotionTask
 
@@ -136,19 +136,15 @@ La PromotionTask `demo-promo-process` (`manifests/kargo-project/promotion-task.y
 | 2 | `git-clear` | Svuota la directory `./out` per partire da uno stato pulito |
 | 3 | `kustomize-set-image` | Aggiorna il tag dell'immagine nella base kustomize con quello della Freight |
 | 4 | `kustomize-build` | Esegue `kustomize build` sull'overlay dello stage e scrive il risultato in `./out/manifests.yaml` |
-| 5 | `git-commit` | Committa i manifest renderizzati nella directory `./out` |
+| 5 | `git-commit` | Committa i manifest renderizzati in `./out`, con messaggio "promote nginx X to stage (freight Y)" |
 | 6 | `git-push` | Pusha il commit sul branch `stage/{stage}` |
 | 7 | `argocd-update` | Aggiorna l'Application ArgoCD per sincronizzarsi con il nuovo commit |
 
 ## 5. Eseguire la demo
 
-Due modi. Il percorso guidato commenta ogni passo e verifica il risultato:
-
-```bash
-./demo.sh
-```
-
-Chi conosce gia' il flusso puo' usare direttamente lo script di bootstrap, come descritto qui sotto.
+Il percorso consigliato e' `./demo.sh prepare` prima della sessione e `./demo.sh` davanti al
+pubblico: i capitoli sono descritti nel README. Questa sezione descrive gli stessi passi a mano,
+per chi vuole capire cosa fa lo script.
 
 Kargo richiede cert-manager: il suo chart crea `Certificate` e `Issuer` per l'API e per i
 webhook server, che con Kubernetes parlano solo in TLS. Lo installa il comando `kargo` prima
@@ -184,7 +180,7 @@ Accedi alla UI di Kargo all'indirizzo `https://localhost:8081`. Dopo il login, v
 
 ### 4. Promozione su dev
 
-dev ha `autoPromotionEnabled` nella promotionPolicy del Project: appena il Warehouse produce una Freight, la promozione parte da sola. Cosa succede:
+dev ha `autoPromotionEnabled` nelle promotionPolicies del `ProjectConfig`: appena il Warehouse produce una Freight, la promozione parte da sola. Cosa succede:
 
 - Kargo esegue la PromotionTask `demo-promo-process`
 - Il branch `stage/dev` viene creato o aggiornato nel repo gitops
@@ -215,28 +211,19 @@ kubectl get pods -n kargo-demo-staging
 kubectl get pods -n kargo-demo-prod
 ```
 
-### 6. Promozione tramite kubectl (opzionale)
+### 6. Promozione da riga di comando (opzionale)
 
-E' possibile promuovere anche senza la UI:
-
-```bash
-kubectl create -f - <<EOF
-apiVersion: kargo.akuity.io/v1alpha1
-kind: Promotion
-metadata:
-  name: promote-to-dev
-  namespace: kargo-demo
-spec:
-  stage: dev
-  freight: <freight-name>
-EOF
-```
-
-Sostituisci `<freight-name>` con il nome della Freight da promuovere. Lo puoi trovare con:
+`kubectl create` di una `Promotion` viene rifiutato dal webhook di Kargo anche per un
+cluster-admin, se l'utente Kubernetes non e' mappato su un account Kargo del progetto. Si passa
+dalla CLI, dopo il login admin (la password viene chiesta in modo interattivo):
 
 ```bash
-kubectl get freight -n kargo-demo
+kargo login https://localhost:8081 --admin --insecure-skip-tls-verify
+kargo promote --project kargo-demo --stage staging --freight <nome-freight>
 ```
+
+`demo.sh` usa la stessa API della CLI e della UI (`PromoteToStage`), con un token ottenuto da
+`AdminLogin`: vedi `kargo_promote` in `lib/presenter.sh`.
 
 ## 6. Troubleshooting
 
@@ -257,8 +244,11 @@ Tre inciampi visti sul campo, gia' risolti nel repo ma utili da riconoscere:
 - `autoPromotionEnabled` ignorato: da Kargo 1.9 le promotionPolicies stanno nella
   `ProjectConfig`, non nello `spec` del `Project`, che viene scartato in silenzio.
 - `kubectl create promotion` rifiutato dall'admission webhook: le promozioni si lanciano
-  dalla UI come utente admin di Kargo. Un utente Kubernetes non mappato a un account Kargo
-  non e' autorizzato, anche se e' cluster-admin.
+  dalla UI, dalla CLI o dall'API come utente di Kargo. Un utente Kubernetes non mappato a un
+  account Kargo non e' autorizzato, anche se e' cluster-admin.
+- Application `OutOfSync` subito dopo una promozione riuscita: ArgoCD confronta il cluster con
+  la HEAD del branch che ha in cache. Un refresh
+  (`argocd.argoproj.io/refresh=normal`) la riporta a `Synced`.
 
 ## 7. Smontare la demo
 
