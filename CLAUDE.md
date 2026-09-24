@@ -14,8 +14,13 @@ non lo stato di un task.
   che sfora la request viene evicted per memoria del nodo. Per GitLab servono
   `requests == limits` a 8Gi: Omnibus dimensiona puma sulle CPU del nodo, non sul limit del
   container, quindi va anche fissato `puma['worker_processes']`.
-- **PVC**: i dischi persistenti sopravvivono alla cancellazione del cluster. Dopo un
-  teardown controllare `gcloud compute disks list` e cancellarli a mano.
+- **PVC**: i PD li cancella il driver CSI, che muore con il cluster. Se il cluster si cancella
+  con i PVC ancora presenti (anche con "Delete and recreate") i dischi restano orfani e a
+  pagamento: `cluster_delete` cancella prima i PVC e aspetta che spariscano i PV.
+- **Spot**: su Autopilot lo chiede il singolo pod. Il `nodeSelector` va nei manifest, non in una
+  patch successiva (con strategy `Recreate` riavvia il pod appena partito); su kind i nodi
+  ricevono la stessa etichetta. Le repliche nuove possono restare Pending qualche minuto in
+  attesa di un nodo Spot.
 - Le porte host della demo (8080/8443/8081) si spostano con `GITLAB_LOCAL_PORT`,
   `ARGOCD_LOCAL_PORT`, `KARGO_LOCAL_PORT`: utile quando una è occupata da altro in locale.
 
@@ -74,6 +79,13 @@ porte locali deve avere `-m`.
 Con `selfHeal` attivo il primo rientro è sotto il secondo: `OutOfSync` non è osservabile né
 nella UI né con un polling da kubectl. L'evidenza da mostrare sono gli eventi del Deployment
 (`Scaled up ... 1 to 4` seguito da `Scaled down ... 4 to 1`).
+
+## Sessioni di prova
+
+- `get-credentials` scrive nel kubeconfig attivo e cambia il contesto corrente: per le prove si
+  usa un `KUBECONFIG` dedicato, per non toccare quello di chi lavora su altri cluster.
+- Il banco di una sessione vecchia resta in ascolto sulla sua porta: prima di pilotare un banco
+  controllare che sia quello della sessione giusta (il token cambia a ogni avvio).
 
 ## Script con set -e
 
