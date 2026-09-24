@@ -191,7 +191,7 @@ palco_declared_replicas() {
     local stage count json='{}'
     for stage in dev staging prod; do
         count=$(awk '/count:/ {print $2; exit}' \
-            "${SCRIPT_DIR}/manifests/kargo-demo/stages/${stage}/kustomization.yaml" 2>/dev/null)
+            "${SCRIPT_DIR}/repos/${KARGO_PROJECT}/app/stages/${stage}/kustomization.yaml" 2>/dev/null)
         json=$(jq -c --arg s "${stage}" --argjson n "${count:-0}" '. + {($s): $n}' <<< "${json}")
     done
     echo "${json}"
@@ -464,21 +464,27 @@ gitlab_api() {
     fi
 }
 
-gitlab_file_raw() {
-    local file="$1" ref="$2"
-    gitlab_api GET "/projects/root%2Fgitops/repository/files/$(jq -rn --arg f "${file}" '$f|@uri')/raw?ref=$(jq -rn --arg r "${ref}" '$r|@uri')"
+# Il repo e' l'ultimo argomento, opzionale: di default quello dell'app promossa da Kargo.
+gitlab_repo_path() {
+    jq -rn --arg r "root/${1:-${KARGO_PROJECT}}" '$r|@uri'
 }
 
-# Uso: gitlab_commit_file FILE CONTENUTO MESSAGGIO  (su main). Stampa lo short id.
+gitlab_file_raw() {
+    local file="$1" ref="$2" repo="${3:-}"
+    gitlab_api GET "/projects/$(gitlab_repo_path "${repo}")/repository/files/$(jq -rn --arg f "${file}" '$f|@uri')/raw?ref=$(jq -rn --arg r "${ref}" '$r|@uri')"
+}
+
+# Uso: gitlab_commit_file FILE CONTENUTO MESSAGGIO [REPO]  (su main). Stampa lo short id.
 gitlab_commit_file() {
-    local file="$1" content="$2" message="$3"
-    gitlab_api POST "/projects/root%2Fgitops/repository/commits" \
+    local file="$1" content="$2" message="$3" repo="${4:-}"
+    gitlab_api POST "/projects/$(gitlab_repo_path "${repo}")/repository/commits" \
         "$(jq -cn --arg f "${file}" --arg c "${content}" --arg m "${message}" \
             '{branch: "main", commit_message: $m, actions: [{action: "update", file_path: $f, content: $c}]}')" |
         jq -r '.short_id // empty'
 }
 
 gitlab_last_commit() {
-    gitlab_api GET "/projects/root%2Fgitops/repository/commits?ref_name=$(jq -rn --arg r "$1" '$r|@uri')&per_page=1" |
+    local ref="$1" repo="${2:-}"
+    gitlab_api GET "/projects/$(gitlab_repo_path "${repo}")/repository/commits?ref_name=$(jq -rn --arg r "${ref}" '$r|@uri')&per_page=1" |
         jq -r '.[0] | "\(.short_id)  \(.author_name) <\(.author_email)>  \(.title)"'
 }

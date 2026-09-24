@@ -12,7 +12,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: http://gitlab.gitlab.svc.cluster.local/root/gitops.git
+    repoURL: http://gitlab.gitlab.svc.cluster.local/root/platform.git
     targetRevision: HEAD
     path: inventory
   destination:

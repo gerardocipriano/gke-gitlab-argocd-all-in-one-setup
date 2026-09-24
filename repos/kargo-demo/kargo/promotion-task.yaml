@@ -8,7 +8,7 @@ metadata:
 spec:
   vars:
     - name: gitopsRepo
-      value: http://gitlab.gitlab.svc.cluster.local/root/gitops.git
+      value: http://gitlab.gitlab.svc.cluster.local/root/kargo-demo.git
     - name: imageRepo
       value: ghcr.io/stefanprodan/podinfo
   steps:
@@ -29,13 +29,13 @@ spec:
     - uses: kustomize-set-image
       as: update
       config:
-        path: ./src/manifests/kargo-demo/base
+        path: ./src/app/base
         images:
           - image: ${{ vars.imageRepo }}
             tag: ${{ imageFrom(vars.imageRepo).Tag }}
     - uses: kustomize-build
       config:
-        path: ./src/manifests/kargo-demo/stages/${{ ctx.stage }}
+        path: ./src/app/stages/${{ ctx.stage }}
         outPath: ./out/manifests.yaml
     - uses: git-commit
       as: commit

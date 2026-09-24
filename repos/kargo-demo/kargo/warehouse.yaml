@@ -1,5 +1,5 @@
 # Warehouse con due sottoscrizioni: ogni Freight porta insieme un tag di podinfo e un commit
-# della configurazione. Una nuova immagine o un commit sotto manifests/kargo-demo producono
+# della configurazione. Una nuova immagine o un commit sotto app/ producono
 # ciascuno un Freight nuovo, che segue la stessa catena di promozione.
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Warehouse
@@ -14,11 +14,11 @@ spec:
         repoURL: ghcr.io/stefanprodan/podinfo
         constraint: "~6.9.0"
         discoveryLimit: 5
-    # includePaths: solo i manifest dell'app. Un commit sulle risorse Kargo (per esempio questo
-    # file) non deve diventare un Freight.
+    # includePaths: solo app/. Un commit sulle risorse Kargo in kargo/ (per esempio questo file)
+    # non deve diventare un Freight.
     - git:
-        repoURL: http://gitlab.gitlab.svc.cluster.local/root/gitops.git
+        repoURL: http://gitlab.gitlab.svc.cluster.local/root/kargo-demo.git
         branch: main
         includePaths:
-          - manifests/kargo-demo
+          - app
         discoveryLimit: 5

@@ -58,6 +58,10 @@ spec:
         component: server
     spec:
       shareProcessNamespace: true
+      # Nel manifest e non come patch: una patch dopo l'apply riavviava il pod appena partito
+      # (strategy Recreate), e su kind i nodi ricevono la stessa etichetta.
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"
       containers:
         - name: gitlab
           image: gitlab/gitlab-ce:18.6.0-ce.0

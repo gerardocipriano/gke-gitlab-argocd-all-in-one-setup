@@ -485,7 +485,7 @@
         <span class="node-name">Warehouse</span>
         <span class="badges"><span class="badge" id="wh-constraint">-</span></span>
       </div>
-      <div class="meta" style="margin-top:4px"><span>osserva ghcr.io/stefanprodan/podinfo + repo, manifests/kargo-demo</span></div>
+      <div class="meta" style="margin-top:4px"><span>osserva ghcr.io/stefanprodan/podinfo + root/kargo-demo, cartella app/</span></div>
       <div class="chips" id="wh-chips"></div>
     </div>
     <div id="stages"></div>
@@ -506,9 +506,9 @@
   "use strict";
 
   var CHAPTERS = [
-    { id: "mappa", panel: "cluster", points: ["GitLab: il repository gitops. main lo scrivono le persone", "ArgoCD: confronta il cluster con il repo e lo riallinea", "Kargo: sceglie la versione di ogni ambiente, con un commit"], title: "La mappa", short: "Mappa",
-      idea: "Tre strumenti, una sola fonte di verità: il repository git dentro GitLab.",
-      look: [["GitLab: branch", "gitlab", "/root/gitops/-/branches"], ["ArgoCD: Application", "argocd", "/applications"]],
+    { id: "mappa", panel: "cluster", points: ["GitLab: un repo per la piattaforma e uno per ogni app", "ArgoCD: confronta il cluster con il repo e lo riallinea", "Kargo: sceglie la versione di ogni ambiente, con un commit"], title: "La mappa", short: "Mappa",
+      idea: "Tre strumenti, una sola fonte di verità: i repository git dentro GitLab.",
+      look: [["GitLab: i repository", "gitlab", "/dashboard/projects"], ["GitLab: branch di kargo-demo", "gitlab", "/root/kargo-demo/-/branches"], ["ArgoCD: Application", "argocd", "/applications"]],
       questions: [
         { q: "Chi fa i commit sui branch stage/dev, stage/staging e stage/prod?",
           o: ["Chi presenta, a mano", "Una pipeline CI di GitLab", "Kargo, durante la promozione", "ArgoCD, dopo il sync"], a: 2,
@@ -524,7 +524,7 @@
       ] },
     { id: "freight", points: ["Warehouse: osserva l'immagine podinfo e la cartella dell'app nel repo", "Freight: un tag più un commit, con un nome leggibile", "dev: promozione automatica, nessun clic"], title: "Warehouse e Freight", short: "Freight",
       idea: "Kargo osserva registry e repo e impacchetta ogni combinazione nuova in un Freight. dev lo riceve da solo.",
-      look: [["Kargo: progetto", "kargo", "/project/kargo-demo"], ["GitLab: commit su stage/dev", "gitlab", "/root/gitops/-/commits/stage/dev"]],
+      look: [["Kargo: progetto", "kargo", "/project/kargo-demo"], ["GitLab: commit su stage/dev", "gitlab", "/root/kargo-demo/-/commits/stage/dev"]],
       questions: [
         { q: "Nessuno ha cliccato niente, eppure dev gira già la versione nuova. Dove è configurato?",
           o: ["Nel ProjectConfig: promotionPolicies con autoPromotionEnabled", "Nello spec dello Stage dev", "Nel sync automatico della Application ArgoCD kargo-demo-dev", "In una pipeline schedulata di GitLab"], a: 0,
@@ -535,7 +535,7 @@
       ] },
     { id: "promote", points: ["dev, staging, prod: una catena, non tre ambienti isolati", "Ogni promozione è un commit sul branch dello stage", "Gli overlay kustomize fanno la differenza tra ambienti"], title: "Promozione con cancello", short: "Promozione",
       idea: "staging e prod si promuovono a mano, e solo nell'ordine della catena.",
-      look: [["Kargo: progetto", "kargo", "/project/kargo-demo"], ["GitLab: commit su stage/prod", "gitlab", "/root/gitops/-/commits/stage/prod"]],
+      look: [["Kargo: progetto", "kargo", "/project/kargo-demo"], ["GitLab: commit su stage/prod", "gitlab", "/root/kargo-demo/-/commits/stage/prod"]],
       questions: [
         { q: "Provo a promuovere direttamente in prod il Freight che è appena arrivato in dev. Cosa succede?",
           o: ["Riesce: in prod la promozione è manuale, quindi libera", "Kargo la rifiuta: prod accetta solo Freight già passati da staging", "Riesce, ma ArgoCD non sincronizza", "Kargo promuove prima staging in automatico"], a: 1,
@@ -546,7 +546,7 @@
       ] },
     { id: "release", points: ["Un commit su main cambia cosa osserva Kargo", "Il nuovo Freight avanza da solo, ma solo dove è previsto", "Per il resto serve una decisione: una promozione"], title: "Arriva una nuova versione", short: "Release",
       idea: "Un commit su main cambia cosa osserva il Warehouse. Il resto avanza da solo, fino a dove abbiamo deciso.",
-      look: [["GitLab: commit su main", "gitlab", "/root/gitops/-/commits/main"], ["Kargo: progetto", "kargo", "/project/kargo-demo"]],
+      look: [["GitLab: commit su main", "gitlab", "/root/kargo-demo/-/commits/main"], ["Kargo: progetto", "kargo", "/project/kargo-demo"]],
       questions: [
         { q: "Con un commit su main cambio il vincolo del Warehouse da ~6.9.0 a ~6.10.0. Dopo un minuto, cosa gira in prod?",
           o: ["6.10, ovunque", "Ancora 6.9: il nuovo Freight arriva solo in dev", "Niente: il Warehouse cancella i Freight 6.9", "6.10, perché prod segue main"], a: 1,
@@ -554,11 +554,11 @@
       ] },
     { id: "config", points: ["Il Freight contiene anche un commit di configurazione", "Cambiare il messaggio dell'app è una release come un'immagine nuova", "Stessa catena: dev da solo, staging e prod su decisione"], title: "Anche la configurazione viaggia", short: "Config",
       idea: "Un Freight è un'immagine più un commit: cambiare la configurazione è una release come le altre.",
-      look: [["GitLab: commit su main", "gitlab", "/root/gitops/-/commits/main"], ["Kargo: progetto", "kargo", "/project/kargo-demo"]],
+      look: [["GitLab: commit su main", "gitlab", "/root/kargo-demo/-/commits/main"], ["Kargo: progetto", "kargo", "/project/kargo-demo"]],
       questions: [
         { q: "Cambio su main solo il messaggio che podinfo mostra, senza nessuna immagine nuova. Cosa succede?",
           o: ["Niente: Kargo osserva solo le immagini", "Nasce un Freight con la stessa immagine e il nuovo commit, e dev lo riceve da solo", "ArgoCD applica subito il messaggio in tutti gli ambienti, perché main è cambiato", "Serve una nuova immagine per far partire una promozione"], a: 1,
-          why: "Il Warehouse sottoscrive anche manifests/kargo-demo nel repo: un commit lì produce un Freight nuovo. ArgoCD non legge main per gli stage, legge i branch stage/*, che cambiano solo con una promozione." }
+          why: "Il Warehouse sottoscrive anche la cartella app/ del repo kargo-demo: un commit lì produce un Freight nuovo. ArgoCD non legge main per gli stage, legge i branch stage/*, che cambiano solo con una promozione." }
       ] },
     { id: "drift", points: ["dev: selfHeal, la modifica manuale sparisce", "staging: ArgoCD segnala OutOfSync e aspetta", "Rientro: un Sync o la prossima promozione"], title: "Drift: chi vince", short: "Drift",
       idea: "Qualcuno cambia il cluster a mano. In dev ArgoCD corregge da solo, in staging segnala e aspetta.",
@@ -573,7 +573,7 @@
       ] },
     { id: "rollback", points: ["Il Freight precedente resta promuovibile", "Il rollback è un commit nuovo: la storia resta intera", "Niente rollout undo: il git resterebbe indietro"], title: "Rollback", short: "Rollback",
       idea: "Tornare indietro usa lo stesso percorso del deploy: si ripromuove un Freight precedente.",
-      look: [["Kargo: progetto", "kargo", "/project/kargo-demo"], ["GitLab: commit su stage/staging", "gitlab", "/root/gitops/-/commits/stage/staging"]],
+      look: [["Kargo: progetto", "kargo", "/project/kargo-demo"], ["GitLab: commit su stage/staging", "gitlab", "/root/kargo-demo/-/commits/stage/staging"]],
       questions: [
         { q: "La nuova versione in staging ha un bug. Qual è il rollback corretto?",
           o: ["kubectl rollout undo sul Deployment", "Ripromuovere in staging il Freight precedente", "git revert su main", "Cancellare il Freight nuovo"], a: 1,

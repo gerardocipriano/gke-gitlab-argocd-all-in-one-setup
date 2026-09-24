@@ -138,7 +138,7 @@ PREP_STEPS=(
 "Prerequisiti: gcloud, kubectl, helm, jq, python3|prereq|1"
 "Cluster GKE Autopilot regionale|cluster|8"
 "GitLab CE nel cluster, utente root e token|gitlab|16"
-"Repository gitops: main e i branch stage/*|gitops|2"
+"Repository: platform, kargo-demo con i branch stage/*, nginx|gitops|2"
 "ArgoCD e la root Application 'apps'|argocd|2"
 "cert-manager, Kargo e credenziali git del progetto|kargo|6"
 )
@@ -349,8 +349,9 @@ promote_step() {
 
 ch_mappa() {
     chapter_header 1
-    say "Tre attori. GitLab tiene il repo: è l'unica fonte di verità." \
-        "ArgoCD confronta il cluster con il repo e lo riallinea. Non scrive mai nel repo." \
+    say "Tre attori. GitLab tiene i repository: sono l'unica fonte di verità." \
+        "Un repo per la piattaforma e uno per ogni app: chi gestisce il cluster e chi sviluppa non si pestano i piedi." \
+        "ArgoCD confronta il cluster con i repo e lo riallinea. Non scrive mai nei repo." \
         "Kargo decide quale versione va in quale ambiente, e lo fa con un commit." \
         "Tutto gira dentro un cluster GKE Autopilot: niente nodi da gestire, si paga per pod."
     pause "domanda al pubblico"
@@ -358,13 +359,17 @@ ch_mappa() {
     pause "mostro chi ha fatto i commit"
     run kubectl get applications -n "${ARGOCD_NAMESPACE}"
     echo ""
-    info "Ultimo commit per branch (autore e messaggio):"
-    local ref
+    info "Ultimo commit per repo e branch (autore e messaggio):"
+    local ref repo
+    for repo in platform nginx; do
+        printf "    %-27s %s\n" "${repo}:main" "$(gitlab_last_commit main "${repo}")"
+    done
     for ref in main stage/dev stage/staging stage/prod; do
-        printf "    %-14s %s\n" "${ref}" "$(gitlab_last_commit "${ref}")"
+        printf "    %-27s %s\n" "${KARGO_PROJECT}:${ref}" "$(gitlab_last_commit "${ref}")"
     done
     reveal mappa 0
-    say "main lo scrive una persona. I branch stage/* li scrive solo Kargo: è la regola della demo."
+    say "main lo scrive una persona. I branch stage/* li scrive solo Kargo, e ogni app promossa ha i suoi nel proprio repo." \
+        "nginx non ha promozione: ArgoCD lo sincronizza direttamente dal main del suo repo."
     pause "capitolo successivo"
 }
 
@@ -379,11 +384,15 @@ ch_appofapps() {
     before=$(kubectl get deploy nginx -n nginx -o jsonpath='{.metadata.creationTimestamp}' 2>/dev/null)
     run kubectl delete application nginx -n "${ARGOCD_NAMESPACE}"
     t0=$(date +%s)
-    for _ in $(seq 1 60); do
+    # Di solito la root la ricrea in pochi secondi, ma dipende da quando riconcilia: visto
+    # fino a circa 90s. Si aspetta la condizione e si dice quanto ci ha messo.
+    palco_note "La root 'apps' confronta la cartella inventory con il cluster"
+    for _ in $(seq 1 150); do
         created=$(kubectl get application nginx -n "${ARGOCD_NAMESPACE}" -o jsonpath='{.metadata.creationTimestamp}' 2>/dev/null || true)
         [[ -n "${created}" ]] && break
         sleep 1
     done
+    palco_note ""
     if [[ -n "${created}" ]]; then
         ok "Application nginx ricreata dalla root dopo $(( $(date +%s) - t0 ))s"
     else
@@ -398,7 +407,7 @@ ch_appofapps() {
 ch_freight() {
     chapter_header 3
     say "Il Warehouse osserva due cose: l'immagine ghcr.io/stefanprodan/podinfo con un vincolo semver," \
-        "e il repo gitops, solo la cartella manifests/kargo-demo." \
+        "e il repo ${KARGO_PROJECT}, solo la cartella app/." \
         "Ogni Freight è la coppia tag più commit, con un nome leggibile. dev l'ha già ricevuto: nessuno ha cliccato."
     info "Freight disponibili (alias, tag di podinfo, commit di configurazione):"
     kubectl get freight -n "${KARGO_PROJECT}" -o json 2>/dev/null |
@@ -452,7 +461,7 @@ ch_promote() {
     local s
     for s in dev staging prod; do
         printf "    %-8s overlay: %-3s  branch stage/%s: %s\n" "${s}" \
-            "$(awk '/count:/ {print $2; exit}' "${SCRIPT_DIR}/manifests/kargo-demo/stages/${s}/kustomization.yaml")" \
+            "$(awk '/count:/ {print $2; exit}' "${SCRIPT_DIR}/repos/${KARGO_PROJECT}/app/stages/${s}/kustomization.yaml")" \
             "${s}" "$(gitlab_file_raw manifests.yaml "stage/${s}" | awk '/replicas:/ {print $2; exit}')"
     done
     info "Ultimo commit su stage/prod: $(gitlab_last_commit stage/prod)"
@@ -475,10 +484,10 @@ ch_release() {
         warn "Il Warehouse osserva già ${RELEASE_CONSTRAINT}: salto il commit"
     else
         local content new sha
-        content=$(gitlab_file_raw manifests/kargo-project/warehouse.yaml main)
+        content=$(gitlab_file_raw kargo/warehouse.yaml main)
         new=$(sed "s/constraint: \"${current}\"/constraint: \"${RELEASE_CONSTRAINT}\"/" <<< "${content}")
         diff <(echo "${content}") <(echo "${new}") | sed 's/^/    /' || true
-        sha=$(gitlab_commit_file manifests/kargo-project/warehouse.yaml "${new}" \
+        sha=$(gitlab_commit_file kargo/warehouse.yaml "${new}" \
             "feat(warehouse): osserva la serie ${RELEASE_CONSTRAINT} di podinfo")
         ok "Commit ${sha} su main"
     fi
@@ -526,16 +535,16 @@ ch_config() {
     pause "committo il nuovo messaggio su main"
     local content new sha="" i freight="" before
     before=$(kargo_freight_by_age | sed -n 1p)
-    content=$(gitlab_file_raw manifests/kargo-demo/base/deployment.yaml main)
+    content=$(gitlab_file_raw app/base/deployment.yaml main)
     if grep -q "${new_msg}" <<< "${content}"; then
         warn "Il messaggio è già quello nuovo: salto il commit"
     else
         new=$(sed "s/value: \"${old_msg}\"/value: \"${new_msg}\"/" <<< "${content}")
         diff <(echo "${content}") <(echo "${new}") | sed 's/^/    /' || true
-        sha=$(gitlab_commit_file manifests/kargo-demo/base/deployment.yaml "${new}" "feat(app): nuovo messaggio della UI")
+        sha=$(gitlab_commit_file app/base/deployment.yaml "${new}" "feat(app): nuovo messaggio della UI")
         ok "Commit ${sha} su main"
     fi
-    palco_note "Il Warehouse vede il commit sotto manifests/kargo-demo"
+    palco_note "Il Warehouse vede il commit sotto app/"
     run kubectl annotate warehouse kargo-demo -n "${KARGO_PROJECT}" "kargo.akuity.io/refresh=$(date +%s)" --overwrite
     for i in $(seq 1 60); do
         freight=$(kargo_freight_by_age | sed -n 1p)

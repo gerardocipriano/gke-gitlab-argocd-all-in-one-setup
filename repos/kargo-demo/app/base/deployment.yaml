@@ -14,6 +14,10 @@ spec:
       labels:
         app: kargo-demo
     spec:
+      # Tutta la demo gira su nodi Spot: su Autopilot lo chiede il pod. Su kind bootstrap.sh
+      # mette la stessa etichetta ai nodi, cosi' il manifest resta unico.
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"
       containers:
         - name: podinfo
           image: ghcr.io/stefanprodan/podinfo:6.9.4

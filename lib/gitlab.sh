@@ -149,16 +149,13 @@ gitlab_deploy() {
 
     kubectl create namespace "${GITLAB_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 
-    local gitlab_manifest="${SCRIPT_DIR}/manifests/gitlab/gitlab-deployment.yaml"
+    local gitlab_manifest="${SCRIPT_DIR}/repos/platform/gitlab/gitlab-deployment.yaml"
     if [[ ! -f "${gitlab_manifest}" ]]; then
         log_error "GitLab manifest not found: ${gitlab_manifest}"
         exit 1
     fi
 
     kubectl apply -f "${gitlab_manifest}"
-    # Subito, prima che il primo pod finisca il boot: con strategy Recreate una patch fatta
-    # dopo lo riavvierebbe da zero, e il boot di GitLab costa 8-10 minuti.
-    cluster_schedule_spot "${GITLAB_NAMESPACE}"
 
     log_info "Waiting for GitLab to be ready (8-12 minutes)..."
     wait_for_pod_ready "${GITLAB_NAMESPACE}" "app=gitlab" 1200 || {

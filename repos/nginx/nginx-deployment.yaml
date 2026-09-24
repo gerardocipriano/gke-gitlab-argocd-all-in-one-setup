@@ -17,6 +17,10 @@ spec:
         app.kubernetes.io/name: nginx
         app.kubernetes.io/component: webserver
     spec:
+      # Tutta la demo gira su nodi Spot: su Autopilot lo chiede il pod. Su kind bootstrap.sh
+      # mette la stessa etichetta ai nodi, cosi' il manifest resta unico.
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"
       containers:
         - name: nginx
           image: nginx:1.27-alpine

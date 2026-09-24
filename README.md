@@ -74,7 +74,7 @@ Nelle UI: la catena di Kargo dopo il rollback, i branch del repo con i commit di
 Application generate dalla root.
 
 ![Pipeline Kargo](docs/screenshots/kargo-pipeline.png)
-![Branch del repo gitops](docs/screenshots/gitlab-branches.png)
+![Branch del repo kargo-demo](docs/screenshots/gitlab-branches.png)
 
 Si riprende da un capitolo con `./demo.sh --from N`. `./demo.sh --list` elenca passi e capitoli.
 Il banco si apre anche da file (`docs/banco-regia.html`) in modalità prova, con dati di
@@ -87,29 +87,44 @@ demo.
 ## Architettura
 
 ```
-                     cluster GKE Autopilot
-  +-----------------------------------------------------------------+
-  |                                                                 |
-  |   GitLab CE  <---- legge ----  ArgoCD  ---- applica ---->  kargo-demo-dev
-  |   root/gitops                  root app "apps"                  kargo-demo-staging
-  |     main          <-- commit --  Kargo                          kargo-demo-prod
-  |     stage/dev                    Warehouse -> Freight -> Stage
-  |     stage/staging                     ^
-  |     stage/prod                        | osserva i tag
-  +---------------------------------------|-------------------------+
+                        cluster GKE Autopilot, tutto su nodi Spot
+  +--------------------------------------------------------------------------+
+  |  GitLab CE                  ArgoCD                     namespace          |
+  |   root/platform   <-legge-  root app "apps"  -applica-> gitlab, argocd    |
+  |     inventory/ gitlab/ argocd/                                            |
+  |   root/nginx      <-legge-  Application nginx -------> nginx              |
+  |   root/kargo-demo <-legge-  Application kargo-demo-* > kargo-demo-dev     |
+  |     main: app/ kargo/                                    kargo-demo-staging |
+  |     stage/dev staging prod  <-- commit -- Kargo          kargo-demo-prod  |
+  |                                  Warehouse -> Freight -> Stage            |
+  +----------------------------------------|---------------------------------+
                                   ghcr.io/stefanprodan/podinfo
 ```
 
-- `main` contiene i manifest sorgente: base e overlay kustomize, le Application in `inventory/`,
-  le risorse Kargo in `manifests/kargo-project/`.
+Tre repository in GitLab, che nel repo locale sono le cartelle di `repos/`:
+
+- `root/platform`: la root Application `apps` legge `inventory/`, dove c'è una Application per
+  ogni componente e ogni app. La gestisce chi amministra il cluster.
+- `root/kargo-demo`: l'app promossa da Kargo. `app/` contiene base e overlay kustomize, `kargo/`
+  Project, Warehouse, PromotionTask e Stage. I branch `stage/*` stanno in questo repo: ogni app
+  promossa ha i suoi, perché lo step `git-clear` della PromotionTask svuota l'intero branch.
+- `root/nginx`: un'app senza promozione, sincronizzata da ArgoCD direttamente dal suo `main`.
+
+ArgoCD usa un solo credential template (`repo-creds`) per il prefisso `root/`, quindi un repo
+nuovo non richiede un secret nuovo.
+
 - I branch `stage/*` contengono il manifest già renderizzato per quello stage. Li scrive la
   PromotionTask di Kargo (rendered manifests pattern): il diff di una promozione è esattamente
   ciò che ArgoCD applica.
 - L'app è [podinfo](https://github.com/stefanprodan/podinfo): la sua pagina mostra versione e
   messaggio, e l'overlay di ogni stage le dà un colore diverso. Il banco chiede la versione
   all'app in esecuzione (`/version` via port-forward), non solo al manifest.
-- Il Warehouse ha due sottoscrizioni, l'immagine e il repo (solo `manifests/kargo-demo`): ogni
+- Il Warehouse ha due sottoscrizioni, l'immagine e il repo (solo la cartella `app/`): ogni
   Freight è la coppia tag più commit, e la PromotionTask renderizza proprio quel commit.
+- Tutti i pod della demo girano su nodi Spot: il `nodeSelector` sta nei manifest (GitLab, podinfo,
+  nginx) e nei valori Helm di cert-manager; ArgoCD e Kargo, installati da manifest e chart
+  upstream, vengono spostati con una patch. Su kind i nodi ricevono la stessa etichetta. Restano
+  fuori solo i pod di sistema che GKE gestisce da sé (`kube-system`).
 - dev ha auto-promozione (Kargo) e selfHeal (ArgoCD). staging e prod si promuovono a mano e non
   hanno sync automatico: il drift resta visibile come OutOfSync.
 
@@ -158,8 +173,11 @@ Tutto sta in `lib/config.sh` e si sovrascrive con variabili d'ambiente.
 ASSUME_YES=1 DELETE_CLUSTER=1 ./bootstrap.sh --provider gke teardown
 ```
 
-Per aggiungere un'applicazione: copia `manifests/gitops-inventory/inventory/_template-application.yaml.tpl`
-in `inventory/<app>-application.yaml`, crea `manifests/<app>/`, rilancia il passo `gitops`.
+Per aggiungere un'applicazione senza promozione: crea `repos/<app>/` con i manifest (diventa il
+repo `root/<app>`), copia `repos/platform/inventory/_template-application.yaml.tpl` in
+`repos/platform/inventory/<app>-application.yaml`, rilancia `./bootstrap.sh gitops`. Per un'app
+promossa da Kargo si parte invece da una copia di `repos/kargo-demo/`, con un Project Kargo
+proprio.
 
 ## Sicurezza e limiti
 
@@ -192,7 +210,7 @@ Il dettaglio dei concetti Kargo e della PromotionTask è in [docs/KARGO-DEMO.md]
 
 ```
 demo.sh                      presentazione: prepare, present, teardown
-bootstrap.sh      bootstrap per componente, usato da prepare
+bootstrap.sh                 bootstrap per componente, usato da prepare
 lib/
   config.sh common.sh        configurazione, log, port-forward
   cluster-gke.sh cluster-kind.sh prereq-gke.sh prereq-kind.sh
@@ -201,10 +219,9 @@ lib/
 docs/
   banco-regia.html           pagina per il proiettore, servita da demo.sh
   KARGO-DEMO.md              concetti e passi della promozione
-manifests/
-  gitlab/ argocd/ nginx/     piattaforma e app di esempio
-  kargo-project/             Project, ProjectConfig, Warehouse, PromotionTask, Stage
-  kargo-demo/                base e overlay kustomize per stage
-  gitops-inventory/          root Application e inventory delle Application
+repos/                       un repo GitLab per cartella, pushati dal passo gitops
+  platform/                  app-of-apps.yaml, inventory/, gitlab/, argocd/
+  kargo-demo/                app/ (base e overlay), kargo/ (Project, Warehouse, Stage...)
+  nginx/                     app di esempio senza promozione
 scripts/screenshots.mjs      catture delle UI con Playwright
 ```

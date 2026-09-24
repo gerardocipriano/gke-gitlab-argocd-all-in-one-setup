@@ -40,6 +40,10 @@ kargo_install_cert_manager() {
         --version "${CERT_MANAGER_VERSION}" \
         --set crds.enabled=true \
         --set global.leaderElection.namespace="${CERT_MANAGER_NAMESPACE}" \
+        --set-string 'nodeSelector.cloud\.google\.com/gke-spot=true' \
+        --set-string 'webhook.nodeSelector.cloud\.google\.com/gke-spot=true' \
+        --set-string 'cainjector.nodeSelector.cloud\.google\.com/gke-spot=true' \
+        --set-string 'startupapicheck.nodeSelector.cloud\.google\.com/gke-spot=true' \
         --wait \
         --timeout 10m
 
@@ -128,7 +132,7 @@ kargo_create_git_credentials() {
 
     kubectl create secret generic gitops-repo \
         --namespace "${KARGO_PROJECT}" \
-        --from-literal=repoURL="http://gitlab.${GITLAB_NAMESPACE}.svc.cluster.local/root/gitops.git" \
+        --from-literal=repoURL="http://gitlab.${GITLAB_NAMESPACE}.svc.cluster.local/root/${KARGO_PROJECT}.git" \
         --from-literal=username=oauth2 \
         --from-literal=password="${pat}" \
         --dry-run=client -o yaml | kubectl apply -f -

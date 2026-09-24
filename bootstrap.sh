@@ -238,7 +238,6 @@ deploy_spot_scheduling() {
     case "$1" in
         argocd) cluster_schedule_spot "${ARGOCD_NAMESPACE}" ;;
         kargo)
-            cluster_schedule_spot "${CERT_MANAGER_NAMESPACE}"
             cluster_schedule_spot "${KARGO_NAMESPACE}"
             ;;
     esac

@@ -13,9 +13,9 @@ metadata:
 spec:
   project: gitops
   source:
-    repoURL: http://gitlab.gitlab.svc.cluster.local/root/gitops.git
+    repoURL: http://gitlab.gitlab.svc.cluster.local/root/kargo-demo.git
     targetRevision: HEAD
-    path: manifests/kargo-project
+    path: kargo
   destination:
     server: https://kubernetes.default.svc
     namespace: kargo-demo

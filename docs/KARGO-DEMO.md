@@ -12,11 +12,11 @@ Kargo non applica nulla al cluster direttamente. Committa e lascia sincronizzare
 
 ### Project
 
-Un Project raggruppa tutte le risorse Kargo relative a una applicazione o a una pipeline di promozione. È cluster-scoped e crea automaticamente il namespace in cui lavorano le sue risorse. Nella demo, il Project si chiama `kargo-demo` e vive in `manifests/kargo-project/project.yaml`. Il namespace omonimo nasce dalla definizione del Project: le altre risorse del progetto devono attendere che sia sincronizzato (sync-wave `-1`).
+Un Project raggruppa tutte le risorse Kargo relative a una applicazione o a una pipeline di promozione. È cluster-scoped e crea automaticamente il namespace in cui lavorano le sue risorse. Nella demo, il Project si chiama `kargo-demo` e vive in `repos/kargo-demo/kargo/project.yaml`. Il namespace omonimo nasce dalla definizione del Project: le altre risorse del progetto devono attendere che sia sincronizzato (sync-wave `-1`).
 
 ### Warehouse
 
-Il Warehouse osserva una o più sorgenti di artefatti e produce Freight quando scopre nuove versioni. Nella demo, `manifests/kargo-project/warehouse.yaml` ha due sottoscrizioni: l'immagine `ghcr.io/stefanprodan/podinfo` con il vincolo semver `~6.9.0`, e il repo gitops limitato alla cartella `manifests/kargo-demo`. Ogni combinazione nuova, un tag o un commit, diventa un Freight che porta entrambi i riferimenti.
+Il Warehouse osserva una o più sorgenti di artefatti e produce Freight quando scopre nuove versioni. Nella demo, `repos/kargo-demo/kargo/warehouse.yaml` ha due sottoscrizioni: l'immagine `ghcr.io/stefanprodan/podinfo` con il vincolo semver `~6.9.0`, e il repo `root/kargo-demo` limitato alla cartella `app/`. Ogni combinazione nuova, un tag o un commit, diventa un Freight che porta entrambi i riferimenti.
 
 ### Freight
 
@@ -24,7 +24,7 @@ Il Freight è l'unità di promozione. Contiene uno o più riferimenti ad artefat
 
 ### Stage
 
-Gli Stage rappresentano gli ambienti della pipeline di promozione. Nella demo ci sono tre Stage: `dev`, `staging` e `prod`, definiti in `manifests/kargo-project/stages.yaml`. Ogni Stage dichiara da dove ricevere i Freight tramite il campo `requestedFreight`. Lo Stage `dev` li riceve direttamente dal Warehouse (`sources.direct: true`). Lo Stage `staging` li riceve dallo Stage `dev`. Lo Stage `prod` li riceve dallo Stage `staging`. Questo crea una catena obbligata: non si può saltare un ambiente.
+Gli Stage rappresentano gli ambienti della pipeline di promozione. Nella demo ci sono tre Stage: `dev`, `staging` e `prod`, definiti in `repos/kargo-demo/kargo/stages.yaml`. Ogni Stage dichiara da dove ricevere i Freight tramite il campo `requestedFreight`. Lo Stage `dev` li riceve direttamente dal Warehouse (`sources.direct: true`). Lo Stage `staging` li riceve dallo Stage `dev`. Lo Stage `prod` li riceve dallo Stage `staging`. Questo crea una catena obbligata: non si può saltare un ambiente.
 
 ### Promotion
 
@@ -32,7 +32,7 @@ La Promotion è l'atto di avanzare un Freight da uno Stage al successivo. Avvien
 
 ### PromotionTask
 
-La PromotionTask definisce la sequenza di operazioni da eseguire durante una promozione. Nella demo, `manifests/kargo-project/promotion-task.yaml` definisce `demo-promo-process`, un processo di 7 step che clona il commit contenuto nel Freight, renderizza i manifest e li committa su un branch dedicato. Ogni Stage referenzia questa PromotionTask nel suo `promotionTemplate`.
+La PromotionTask definisce la sequenza di operazioni da eseguire durante una promozione. Nella demo, `repos/kargo-demo/kargo/promotion-task.yaml` definisce `demo-promo-process`, un processo di 7 step che clona il commit contenuto nel Freight, renderizza i manifest e li committa su un branch dedicato. Ogni Stage referenzia questa PromotionTask nel suo `promotionTemplate`.
 
 ### Freight lineage
 
@@ -45,7 +45,7 @@ La catena di provenienza dei Freight è definita dal campo `requestedFreight[].s
 La demo usa il pattern render-to-branch. I manifest dell'applicazione sono organizzati in un overlay base e tre overlay per stage:
 
 ```
-manifests/kargo-demo/
+repos/kargo-demo/app/
   base/
     deployment.yaml        # Deployment podinfo, 1 replica, tag gestito da kustomize
     service.yaml           # Service ClusterIP sulla porta 80
@@ -65,7 +65,7 @@ La base kustomize è condivisa. Gli overlay cambiano solo il numero di repliche 
 
 Kargo non applica i manifest al cluster. Il processo è:
 
-1. Clona il repo gitops al commit contenuto nel Freight, non la punta di `main`
+1. Clona il repo `root/kargo-demo` al commit contenuto nel Freight, non la punta di `main`
 2. Aggiorna l'immagine nella base kustomize con il tag del Freight
 3. Esegue `kustomize build` sull'overlay dello stage target
 4. Scrive il risultato (`manifests.yaml`) su un branch dedicato: `stage/dev`, `stage/staging`, o `stage/prod`
@@ -128,7 +128,7 @@ ArgoCD applica YAML già renderizzati. Non deve eseguire kustomize, non deve ris
 
 ## 4. I 7 step della PromotionTask
 
-La PromotionTask `demo-promo-process` (`manifests/kargo-project/promotion-task.yaml`) esegue questi passi:
+La PromotionTask `demo-promo-process` (`repos/kargo-demo/kargo/promotion-task.yaml`) esegue questi passi:
 
 | # | Step | Cosa fa |
 |---|------|---------|
@@ -176,18 +176,18 @@ Le credenziali vengono mostrate a schermo. I riferimenti sono:
 
 ### 3. Primo avvio: Warehouse e Freight
 
-Accedi alla UI di Kargo all'indirizzo `https://localhost:8081`. Dopo il login, verifica che il Warehouse `kargo-demo` abbia scoperto i tag di `ghcr.io/stefanprodan/podinfo` che soddisfano `~6.9.0` e l'ultimo commit di `manifests/kargo-demo`.
+Accedi alla UI di Kargo all'indirizzo `https://localhost:8081`. Dopo il login, verifica che il Warehouse `kargo-demo` abbia scoperto i tag di `ghcr.io/stefanprodan/podinfo` che soddisfano `~6.9.0` e l'ultimo commit di `app/`.
 
 ### 4. Promozione su dev
 
 dev ha `autoPromotionEnabled` nelle promotionPolicies del `ProjectConfig`: appena il Warehouse produce un Freight, la promozione parte da sola. Cosa succede:
 
 - Kargo esegue la PromotionTask `demo-promo-process`
-- Il branch `stage/dev` viene creato o aggiornato nel repo gitops
+- Il branch `stage/dev` viene creato o aggiornato nel repo `root/kargo-demo`
 - ArgoCD sincronizza l'Application `kargo-demo-dev` dal branch `stage/dev`
 - Viene creato il namespace `kargo-demo-dev` con 1 replica di podinfo
 
-Verifica su GitLab: il branch `stage/dev` nel repo `root/gitops` contiene il file `manifests.yaml` con i manifest renderizzati.
+Verifica su GitLab: il branch `stage/dev` nel repo `root/kargo-demo` contiene il file `manifests.yaml` con i manifest renderizzati.
 
 Verifica sul cluster:
 
@@ -230,7 +230,7 @@ kargo promote --project kargo-demo --stage staging --freight <nome-freight>
 | Sintomo | Causa | Comando di verifica |
 |---------|-------|---------------------|
 | Stage in errore per credenziali git mancanti | Il secret `gitops-repo` non esiste nel namespace del progetto. Lo script `kargo_deploy` lo crea automaticamente, ma potrebbe non aver trovato il PAT di GitLab. | `kubectl get secret gitops-repo -n kargo-demo` |
-| Application ArgoCD `kargo-demo-dev` in stato Unknown | Il branch `stage/dev` non esiste ancora nel repo gitops. Lo Stage non ha mai promosso un Freight. | `kubectl get applications -n argocd kargo-demo-dev -o yaml \| grep -A5 status` |
+| Application ArgoCD `kargo-demo-dev` in stato Unknown | Il branch `stage/dev` non esiste ancora nel repo `root/kargo-demo`. Lo Stage non ha mai promosso un Freight. | `kubectl get applications -n argocd kargo-demo-dev -o yaml \| grep -A5 status` |
 | Promozione bloccata sullo step `argocd-update` | L'annotazione `kargo.akuity.io/authorized-stage` manca o non corrisponde allo Stage che sta promuovendo. | `kubectl get applications -n argocd kargo-demo-dev -o jsonpath='{.metadata.annotations}'` |
 | Warehouse senza Freight | Il cluster non riesce a raggiungere il registry pubblico `ghcr.io`. Possibile restrizione di rete o DNS. | `kubectl logs -n kargo deployment/kargo-api \| grep -i error` |
 | Namespace del progetto non trovato | Il Project non è stato ancora sincronizzato da ArgoCD o c'è un ritardo nel sync-wave. | `kubectl get namespaces \| grep kargo-demo` |
@@ -258,7 +258,7 @@ senza ricreare tutto.
 ```bash
 ./bootstrap.sh delete-kargo     # Stage, Warehouse, Project, release Helm
 ./bootstrap.sh delete-argocd    # Application, AppProject, installazione
-./bootstrap.sh delete-gitops    # progetto gitops dentro GitLab
+./bootstrap.sh delete-gitops    # i repository platform, kargo-demo e nginx dentro GitLab
 ./bootstrap.sh delete-gitlab    # namespace GitLab
 ./bootstrap.sh clean            # il cluster
 ```
@@ -273,5 +273,5 @@ ASSUME_YES=1 DELETE_CLUSTER=1 ./bootstrap.sh teardown   # cluster incluso
 ```
 
 Una nota che conta: finché ArgoCD è vivo, la root Application `apps` ricrea le Application
-cancellate a mano. Per una rimozione definitiva si toglie il manifest dal repo gitops, oppure
+cancellate a mano. Per una rimozione definitiva si toglie il manifest dal repo `root/platform` (cartella `inventory/`), oppure
 si cancella prima ArgoCD.

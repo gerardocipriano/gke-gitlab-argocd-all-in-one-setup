@@ -1,11 +1,9 @@
 ---
 # Template Application - Copy and modify for new applications
 # Usage:
-#   1. Copy this file to inventory/myapp-application.yaml
-#   2. Replace all <PLACEHOLDER> values
-#   3. Create the manifest directory manifests/<myapp>/
-#   4. Commit and push to gitops repository
-#   5. ArgoCD will automatically sync and deploy
+#   1. Crea repos/<APP_NAME>/ con i manifest: diventa il repo root/<APP_NAME> in GitLab
+#   2. Copia questo file in repos/platform/inventory/<APP_NAME>-application.yaml
+#   3. Sostituisci i segnaposto e rilancia ./bootstrap.sh gitops
 
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -18,9 +16,9 @@ metadata:
 spec:
   project: gitops
   source:
-    repoURL: http://gitlab.gitlab.svc.cluster.local/root/gitops.git
+    repoURL: http://gitlab.gitlab.svc.cluster.local/root/<APP_NAME>.git
     targetRevision: HEAD
-    path: manifests/<APP_NAME>
+    path: .
   destination:
     server: https://kubernetes.default.svc
     namespace: <APP_NAMESPACE>

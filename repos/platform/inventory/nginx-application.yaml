@@ -9,9 +9,9 @@ metadata:
 spec:
   project: gitops
   source:
-    repoURL: http://gitlab.gitlab.svc.cluster.local/root/gitops.git
+    repoURL: http://gitlab.gitlab.svc.cluster.local/root/nginx.git
     targetRevision: HEAD
-    path: manifests/nginx
+    path: .
   destination:
     server: https://kubernetes.default.svc
     namespace: nginx
