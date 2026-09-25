@@ -191,3 +191,47 @@ gitlab_info() {
     echo "  API Test:       curl -H 'PRIVATE-TOKEN: <token>' http://localhost:${GITLAB_LOCAL_PORT}/api/v4/user"
     echo ""
 }
+
+# ---------------------------------------------------------------------------
+# GitLab via API, dall'interno del pod
+# ---------------------------------------------------------------------------
+
+gitlab_api() {
+    local method="$1" path="$2" data="${3:-}"
+    local pod pat
+    pod=$(gitlab_get_pod)
+    pat=$(gitlab_get_pat)
+    if [[ -n "${data}" ]]; then
+        printf '%s' "${data}" | kubectl exec -i -n "${GITLAB_NAMESPACE}" "${pod}" -- \
+            curl -sf -X "${method}" -H "PRIVATE-TOKEN: ${pat}" -H 'Content-Type: application/json' \
+            --data @- "http://localhost:80/api/v4${path}"
+    else
+        kubectl exec -n "${GITLAB_NAMESPACE}" "${pod}" -- \
+            curl -sf -X "${method}" -H "PRIVATE-TOKEN: ${pat}" "http://localhost:80/api/v4${path}"
+    fi
+}
+
+# Il repo e' l'ultimo argomento, opzionale: di default quello dell'app promossa da Kargo.
+gitlab_repo_path() {
+    jq -rn --arg r "root/${1:-${KARGO_PROJECT}}" '$r|@uri'
+}
+
+gitlab_file_raw() {
+    local file="$1" ref="$2" repo="${3:-}"
+    gitlab_api GET "/projects/$(gitlab_repo_path "${repo}")/repository/files/$(jq -rn --arg f "${file}" '$f|@uri')/raw?ref=$(jq -rn --arg r "${ref}" '$r|@uri')"
+}
+
+# Uso: gitlab_commit_file FILE CONTENUTO MESSAGGIO [REPO]  (su main). Stampa lo short id.
+gitlab_commit_file() {
+    local file="$1" content="$2" message="$3" repo="${4:-}"
+    gitlab_api POST "/projects/$(gitlab_repo_path "${repo}")/repository/commits" \
+        "$(jq -cn --arg f "${file}" --arg c "${content}" --arg m "${message}" \
+            '{branch: "main", commit_message: $m, actions: [{action: "update", file_path: $f, content: $c}]}')" |
+        jq -r '.short_id // empty'
+}
+
+gitlab_last_commit() {
+    local ref="$1" repo="${2:-}"
+    gitlab_api GET "/projects/$(gitlab_repo_path "${repo}")/repository/commits?ref_name=$(jq -rn --arg r "${ref}" '$r|@uri')&per_page=1" |
+        jq -r '.[0] | "\(.short_id)  \(.author_name) <\(.author_email)>  \(.title)"'
+}

@@ -56,6 +56,10 @@ sopravvivono a `helm uninstall`. Guardare il deployment.
   da sola.
 - Da Kargo 1.9 le `promotionPolicies` stanno nel `ProjectConfig`; nello spec del Project
   vengono ignorate.
+- Il Warehouse crea un Freight solo dal tag più recente che soddisfa il vincolo, e
+  l'auto-promozione sceglie il Freight creato per ultimo, non il tag più alto: un Freight con
+  un tag vecchio creato dopo fa tornare indietro dev. Per avere una versione precedente si
+  fissa prima il vincolo su quel tag e poi si ripristina (`kargo_seed_freight`).
 
 ## Port-forward su GKE con DNS endpoint
 

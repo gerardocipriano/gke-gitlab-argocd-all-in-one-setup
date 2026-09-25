@@ -43,3 +43,5 @@ readonly CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.16.2}"
 readonly CERT_MANAGER_NAMESPACE="${CERT_MANAGER_NAMESPACE:-cert-manager}"
 readonly KARGO_CHART="${KARGO_CHART:-oci://ghcr.io/akuity/kargo-charts/kargo}"
 readonly KARGO_VERSION="${KARGO_VERSION:-1.9.2}"
+# Tag di podinfo del primo Freight, scoperto prima di quello più recente della serie.
+readonly KARGO_SEED_TAG="${KARGO_SEED_TAG:-6.9.3}"

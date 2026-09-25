@@ -130,6 +130,17 @@ kargo_create_git_credentials() {
     kubectl create namespace "${KARGO_PROJECT}" --dry-run=client -o yaml | kubectl apply -f -
     kubectl label namespace "${KARGO_PROJECT}" kargo.akuity.io/project=true --overwrite
 
+    # Il vincolo fisso va applicato prima del secret: senza credenziali il Warehouse non
+    # riesce a leggere il repo privato, quindi non può produrre un Freight con il vincolo vero.
+    local seeding=0
+    if [[ -z "$(kubectl get freight -n "${KARGO_PROJECT}" -o name 2>/dev/null)" ]]; then
+        seeding=1
+        log_info "Pinning the Warehouse to podinfo ${KARGO_SEED_TAG} for the first Freight..."
+        kargo_commit_constraint "${KARGO_SEED_TAG}" \
+            "chore(warehouse): ${KARGO_SEED_TAG} come Freight di partenza" || return 1
+        kargo_wait_constraint "${KARGO_SEED_TAG}" || return 1
+    fi
+
     kubectl create secret generic gitops-repo \
         --namespace "${KARGO_PROJECT}" \
         --from-literal=repoURL="http://gitlab.${GITLAB_NAMESPACE}.svc.cluster.local/root/${KARGO_PROJECT}.git" \
@@ -155,6 +166,71 @@ kargo_create_git_credentials() {
         return 1
     fi
     log_success "Kargo git credentials created, Project and Stages synced"
+
+    (( seeding == 1 )) && { kargo_seed_freight || return 1; }
+    return 0
+}
+
+# Due Freight per la demo, il più vecchio creato per primo: l'auto-promozione di dev sceglie
+# il Freight creato per ultimo, non il tag più alto, e un 6.9.3 aggiunto dopo farebbe
+# tornare dev indietro. Con un solo vincolo il Warehouse crea un Freight solo dal tag più recente.
+kargo_seed_freight() {
+    local original
+    original=$(sed -n 's/.*constraint: "\(.*\)".*/\1/p' \
+        "${SCRIPT_DIR}/repos/${KARGO_PROJECT}/kargo/warehouse.yaml" | head -1)
+
+    kargo_wait_freight_count 1 || return 1
+    log_info "Restoring the Warehouse constraint ${original}..."
+    kargo_commit_constraint "${original}" \
+        "chore(warehouse): torna a osservare la serie ${original}" || return 1
+    kargo_wait_constraint "${original}" || return 1
+    kargo_wait_freight_count 2 || return 1
+    log_success "Two Freight ready: podinfo ${KARGO_SEED_TAG} and the newest of ${original}"
+}
+
+# Committa su main kargo/warehouse.yaml con il vincolo indicato e chiede il sync ad ArgoCD.
+kargo_commit_constraint() {
+    local want="$1" message="$2" content current
+    content=$(gitlab_file_raw kargo/warehouse.yaml main) || {
+        log_error "kargo/warehouse.yaml non leggibile da GitLab"
+        return 1
+    }
+    current=$(sed -n 's/.*constraint: "\(.*\)".*/\1/p' <<< "${content}" | head -1)
+    if [[ "${current}" != "${want}" ]]; then
+        gitlab_commit_file kargo/warehouse.yaml \
+            "${content//constraint: \"${current}\"/constraint: \"${want}\"}" "${message}" >/dev/null || {
+            log_error "Commit del vincolo ${want} fallito"
+            return 1
+        }
+    fi
+    kubectl patch application kargo-project -n "${ARGOCD_NAMESPACE}" --type merge \
+        -p '{"operation":{"initiatedBy":{"username":"bootstrap"},"sync":{}}}' &>/dev/null || true
+}
+
+kargo_wait_constraint() {
+    local want="$1" elapsed=0
+    while (( elapsed < 180 )); do
+        [[ "$(kubectl get warehouse kargo-demo -n "${KARGO_PROJECT}" \
+            -o jsonpath='{.spec.subscriptions[0].image.constraint}' 2>/dev/null)" == "${want}" ]] && return 0
+        sleep 3
+        elapsed=$(( elapsed + 3 ))
+    done
+    log_error "Il Warehouse non ha il vincolo ${want} dopo 180s: controlla l'Application kargo-project"
+    return 1
+}
+
+# Il refresh evita di aspettare l'intervallo del Warehouse (5 minuti) o il suo backoff.
+kargo_wait_freight_count() {
+    local want="$1" elapsed=0
+    kubectl annotate warehouse kargo-demo -n "${KARGO_PROJECT}" \
+        "kargo.akuity.io/refresh=$(date +%s)" --overwrite &>/dev/null || true
+    while (( elapsed < 300 )); do
+        (( $(kubectl get freight -n "${KARGO_PROJECT}" --no-headers 2>/dev/null | wc -l) >= want )) && return 0
+        sleep 5
+        elapsed=$(( elapsed + 5 ))
+    done
+    log_error "Meno di ${want} Freight dopo 300s: controlla il Warehouse nella UI di Kargo"
+    return 1
 }
 
 kargo_delete() {
