@@ -1,0 +1,20 @@
+# Overlay dello stage staging: 2 repliche e il colore della UI, per riconoscere l'ambiente a colpo d'occhio.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+replicas:
+  - name: kargo-demo
+    count: 2
+labels:
+  - pairs:
+      kargo.akuity.io/stage: staging
+    includeSelectors: true
+patches:
+  - target:
+      kind: Deployment
+      name: kargo-demo
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env/1/value
+        value: "#8f5c06"

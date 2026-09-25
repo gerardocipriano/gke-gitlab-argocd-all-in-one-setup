@@ -1,0 +1,10 @@
+# Base condivisa dai tre stage. Kargo riscrive newTag a ogni promozione, nella copia di lavoro
+# della PromotionTask: su main resta il valore iniziale.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service.yaml
+images:
+  - name: ghcr.io/stefanprodan/podinfo
+    newTag: "6.9.4"

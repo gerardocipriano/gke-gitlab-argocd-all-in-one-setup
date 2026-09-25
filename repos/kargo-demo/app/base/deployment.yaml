@@ -1,0 +1,48 @@
+# podinfo: la UI mostra versione e messaggio, /version risponde con la versione in esecuzione.
+# Il tag immagine lo riscrive Kargo a ogni promozione, il colore lo decide l'overlay dello stage.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kargo-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kargo-demo
+  template:
+    metadata:
+      labels:
+        app: kargo-demo
+    spec:
+      # Tutta la demo gira su nodi Spot: su Autopilot lo chiede il pod. Su kind bootstrap.sh
+      # mette la stessa etichetta ai nodi, cosi' il manifest resta unico.
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"
+      containers:
+        - name: podinfo
+          image: ghcr.io/stefanprodan/podinfo:6.9.4
+          ports:
+            - name: http
+              containerPort: 9898
+          env:
+            - name: PODINFO_UI_MESSAGE
+              value: "GitOps dal vivo"
+            - name: PODINFO_UI_COLOR
+              value: "#34577c"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10

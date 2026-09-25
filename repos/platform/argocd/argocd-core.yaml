@@ -1,0 +1,34 @@
+---
+# ArgoCD Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    app: argocd
+---
+# Note: ArgoCD core installation is done via kubectl apply
+# This file contains post-install configuration
+# Purpose: gitlab-repo-credentials secret is created dynamically by bootstrap.sh
+# using the PAT generated via gitlab-rails runner (not stored in this file)
+
+---
+# ArgoCD Project for GitOps
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: gitops
+  namespace: argocd
+spec:
+  description: GitOps Project
+  sourceRepos:
+    - '*'
+  destinations:
+    - namespace: '*'
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'

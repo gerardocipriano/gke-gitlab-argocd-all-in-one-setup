@@ -17,7 +17,7 @@ cluster_status() {
 
 cluster_get_credentials() {
     log_info "Getting GKE cluster credentials..."
-    # Il control plane e' raggiungibile solo via DNS endpoint: niente IP pubblico da
+    # Il control plane è raggiungibile solo via DNS endpoint: niente IP pubblico da
     # autorizzare, l'accesso passa da IAM (ruolo container.developer o superiore).
     gcloud container clusters get-credentials "${GKE_CLUSTER_NAME}" \
         --project="${GKE_PROJECT_ID}" --region="${GKE_REGION}" --dns-endpoint
@@ -69,7 +69,7 @@ cluster_create() {
     cluster_get_credentials
 }
 
-# Su Autopilot lo Spot non e' un'opzione di cluster: va chiesto dai singoli pod.
+# Su Autopilot lo Spot non è un'opzione di cluster: va chiesto dai singoli pod.
 # I workload arrivano da manifest upstream e chart Helm che non espongono un
 # nodeSelector, quindi si patcha il pod template dopo l'installazione.
 cluster_schedule_spot() {
@@ -78,27 +78,62 @@ cluster_schedule_spot() {
 
     log_info "Moving workloads in namespace '${namespace}' to Spot nodes..."
     local kind
-    for kind in deployment statefulset daemonset; do
+    for kind in deployment statefulset daemonset cronjob; do
         local names
         names=$(kubectl get "${kind}" -n "${namespace}" -o name 2>/dev/null) || continue
         [[ -z "${names}" ]] && continue
         local obj
         while IFS= read -r obj; do
-            kubectl patch "${obj}" -n "${namespace}" --type=strategic -p "${patch}" &> /dev/null \
+            local p="${patch}"
+            # Nei CronJob il pod template sta sotto jobTemplate.
+            [[ "${obj}" == cronjob* ]] && p='{"spec":{"jobTemplate":{"spec":{"template":{"spec":{"nodeSelector":{"cloud.google.com/gke-spot":"true"}}}}}}}'
+            kubectl patch "${obj}" -n "${namespace}" --type=strategic -p "${p}" &> /dev/null \
                 || log_warn "Spot patch failed: ${namespace}/${obj}"
         done <<< "${names}"
     done
     log_success "Spot scheduling applied to '${namespace}'"
 }
 
+# Il PD di un PVC viene cancellato dal driver CSI, che smette di esistere con il cluster:
+# senza questa attesa i dischi di GitLab restano orfani e a pagamento.
+cluster_release_disks() {
+    kubectl get pvc -A --no-headers 2>/dev/null | grep -q . || return 0
+    log_info "Releasing persistent disks before deleting the cluster..."
+    kubectl delete pvc --all -A --wait=false >/dev/null 2>&1 || true
+    local elapsed=0
+    while (( elapsed < 240 )); do
+        [[ -z "$(kubectl get pv --no-headers 2>/dev/null)" ]] && { log_success "Persistent disks released"; return 0; }
+        sleep 5
+        elapsed=$(( elapsed + 5 ))
+    done
+    log_warn "Some PVs are still present: check the disks after deletion"
+}
+
 cluster_delete() {
     log_step "CLUSTER: Deleting GKE cluster '${GKE_CLUSTER_NAME}'..."
     if cluster_exists; then
+        cluster_get_credentials >/dev/null 2>&1 && cluster_release_disks
         gcloud container clusters delete "${GKE_CLUSTER_NAME}" \
             --project="${GKE_PROJECT_ID}" --region="${GKE_REGION}" --quiet
         log_success "GKE cluster deleted"
+        cluster_report_orphan_disks
     else
         log_warn "GKE cluster does not exist"
+    fi
+}
+
+# I PD dei PVC sopravvivono al cluster se il namespace non è stato cancellato prima.
+# Si elencano e basta: cancellarli è una scelta di chi li vede.
+cluster_report_orphan_disks() {
+    local disks
+    disks=$(gcloud compute disks list --project="${GKE_PROJECT_ID}" \
+        --filter="name~^pvc- AND -users:*" --format="value(name,zone.basename())" 2>/dev/null || true)
+    if [[ -n "${disks}" ]]; then
+        log_warn "Dischi PVC non più agganciati (costano finché esistono):"
+        printf '  %s\n' "${disks}" >&2
+        log_warn "Per cancellarli: gcloud compute disks delete NOME --zone ZONA --project ${GKE_PROJECT_ID}"
+    else
+        log_success "Nessun disco PVC orfano nel progetto"
     fi
 }
 
@@ -122,7 +157,7 @@ cluster_verify() {
         return 1
     fi
     kubectl cluster-info
-    # Autopilot provisiona i nodi on demand: a cluster vuoto la lista e' vuota.
+    # Autopilot provisiona i nodi on demand: a cluster vuoto la lista è vuota.
     kubectl get nodes -o wide
     log_success "VERIFY: Cluster is healthy"
 }

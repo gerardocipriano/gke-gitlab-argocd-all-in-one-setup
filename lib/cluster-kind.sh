@@ -19,6 +19,7 @@ cluster_create() {
             cluster_delete
         else
             log_info "Using existing cluster"
+            cluster_label_spot
             return 0
         fi
     fi
@@ -41,6 +42,13 @@ nodes:
 EOF
 
     log_success "kind cluster '${KIND_CLUSTER_NAME}' created"
+    cluster_label_spot
+}
+
+# I manifest della demo chiedono nodi Spot con il nodeSelector di GKE: su kind si mette la
+# stessa etichetta ai nodi, cosi' gli stessi manifest girano su entrambi i provider.
+cluster_label_spot() {
+    kubectl label nodes --all cloud.google.com/gke-spot=true --overwrite >/dev/null
 }
 
 cluster_delete() {
@@ -64,7 +72,7 @@ cluster_info_label() {
     echo "kind (${KIND_CLUSTER_NAME})"
 }
 
-# Su kind non esistono nodi Spot: il selector lascerebbe i pod Pending.
+# Su kind non serve spostare niente: i nodi hanno gia' l'etichetta Spot.
 cluster_schedule_spot() {
     :
 }

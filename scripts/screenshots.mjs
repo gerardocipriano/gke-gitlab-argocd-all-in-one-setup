@@ -110,12 +110,12 @@ const jobs = {
 
   "gitlab-branches": async (page) => {
     await loginGitlab(page);
-    await page.goto(`${GITLAB}/root/gitops/-/branches`, { waitUntil: "domcontentloaded", timeout: 90000 });
+    await page.goto(`${GITLAB}/root/kargo-demo/-/branches`, { waitUntil: "domcontentloaded", timeout: 90000 });
     await shot(page, "gitlab-branches");
   },
   "gitlab-commits": async (page) => {
     await loginGitlab(page);
-    await page.goto(`${GITLAB}/root/gitops/-/commits/stage/prod`, { waitUntil: "domcontentloaded", timeout: 90000 });
+    await page.goto(`${GITLAB}/root/kargo-demo/-/commits/stage/prod`, { waitUntil: "domcontentloaded", timeout: 90000 });
     await shot(page, "gitlab-commits-stage-prod");
   },
   "argocd-apps": async (page) => {

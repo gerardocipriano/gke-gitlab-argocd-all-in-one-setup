@@ -30,7 +30,7 @@ argocd_deploy() {
         --timeout=600s
 
     # Apply ArgoCD project config (gitops AppProject)
-    local argocd_manifest="${SCRIPT_DIR}/manifests/argocd/argocd-core.yaml"
+    local argocd_manifest="${SCRIPT_DIR}/repos/platform/argocd/argocd-core.yaml"
     if [[ -f "${argocd_manifest}" ]]; then
         kubectl apply -f "${argocd_manifest}"
     fi
@@ -49,18 +49,21 @@ argocd_create_repo_credentials() {
         return 0
     fi
 
-    log_info "Creating ArgoCD repository credentials with PAT..."
+    # Un credential template (repo-creds) per il prefisso root/: vale per platform, per le app
+    # e per ogni repo aggiunto dopo, senza un secret per repo.
+    log_info "Creating ArgoCD credential template for root/ repositories..."
+    kubectl delete secret gitlab-repo-credentials -n "${ARGOCD_NAMESPACE}" --ignore-not-found >/dev/null 2>&1
     cat << EOF | kubectl apply -f -
 apiVersion: v1
 kind: Secret
 metadata:
-  name: gitlab-repo-credentials
+  name: gitlab-repo-creds
   namespace: ${ARGOCD_NAMESPACE}
   labels:
-    argocd.argoproj.io/secret-type: repository
+    argocd.argoproj.io/secret-type: repo-creds
 stringData:
   type: git
-  url: http://gitlab.${GITLAB_NAMESPACE}.svc.cluster.local/root/gitops.git
+  url: http://gitlab.${GITLAB_NAMESPACE}.svc.cluster.local/root/
   username: oauth2
   password: "${pat}"
 EOF
@@ -70,7 +73,7 @@ EOF
 argocd_deploy_app_of_apps() {
     log_step "ARGOCD: Deploying App of Apps..."
 
-    local appofapps_manifest="${SCRIPT_DIR}/manifests/gitops-inventory/app-of-apps.yaml"
+    local appofapps_manifest="${SCRIPT_DIR}/repos/platform/app-of-apps.yaml"
     if [[ ! -f "${appofapps_manifest}" ]]; then
         log_error "App of Apps manifest not found: ${appofapps_manifest}"
         return 1
@@ -102,7 +105,7 @@ argocd_delete() {
     kubectl delete appproject gitops -n "${ARGOCD_NAMESPACE}" --ignore-not-found 2>/dev/null || true
 
     log_info "Deleting repo credentials secret..."
-    kubectl delete secret gitlab-repo-credentials -n "${ARGOCD_NAMESPACE}" --ignore-not-found 2>/dev/null || true
+    kubectl delete secret gitlab-repo-creds gitlab-repo-credentials -n "${ARGOCD_NAMESPACE}" --ignore-not-found 2>/dev/null || true
 
     log_info "Deleting ArgoCD installation..."
     kubectl delete -n "${ARGOCD_NAMESPACE}" \

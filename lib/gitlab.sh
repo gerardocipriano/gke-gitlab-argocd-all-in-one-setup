@@ -18,19 +18,24 @@ gitlab_rails_runner() {
         gitlab-rails runner "${ruby_code}" 2>/dev/null
 }
 
+# Il pod si risolve a ogni tentativo: un riavvio (patch Spot, eviction) cambia il nome e
+# un exec sul pod vecchio fallirebbe fino al timeout. Si interroga puma via HTTP invece di
+# un rails runner, che per rispondere carica Rails da capo (circa due minuti a chiamata).
 gitlab_wait_for_rails() {
-    local gitlab_pod="$1"
-    local max_attempts="${2:-60}"
-    local attempt=0
+    local max_attempts="${1:-90}"
+    local attempt=0 gitlab_pod status
 
     log_info "Waiting for GitLab Rails to be ready..."
     while [[ ${attempt} -lt ${max_attempts} ]]; do
-        if gitlab_rails_runner "${gitlab_pod}" 'puts "ok"' &>/dev/null; then
+        gitlab_pod=$(gitlab_get_pod)
+        status=$(kubectl exec -n "${GITLAB_NAMESPACE}" "${gitlab_pod:-none}" -- \
+            curl -s -o /dev/null -w "%{http_code}" http://localhost:80/users/sign_in 2>/dev/null || echo "000")
+        if [[ "${status}" == "200" ]]; then
             log_success "GitLab Rails is ready"
             return 0
         fi
         attempt=$((attempt + 1))
-        log_info "Waiting for Rails... (${attempt}/${max_attempts})"
+        log_info "Waiting for Rails... (${attempt}/${max_attempts}, HTTP ${status})"
         sleep 10
     done
     log_error "GitLab Rails did not become ready"
@@ -38,15 +43,14 @@ gitlab_wait_for_rails() {
 }
 
 gitlab_wait_for_api() {
-    local gitlab_pod="$1"
-    local pat="$2"
-    local max_attempts="${3:-120}"
-    local attempt=0
+    local pat="$1"
+    local max_attempts="${2:-120}"
+    local attempt=0 gitlab_pod status
 
     log_info "Waiting for GitLab API..."
     while [[ ${attempt} -lt ${max_attempts} ]]; do
-        local status
-        status=$(kubectl exec -n "${GITLAB_NAMESPACE}" "${gitlab_pod}" -- \
+        gitlab_pod=$(gitlab_get_pod)
+        status=$(kubectl exec -n "${GITLAB_NAMESPACE}" "${gitlab_pod:-none}" -- \
             curl -sf -o /dev/null -w "%{http_code}" \
             -H "PRIVATE-TOKEN: ${pat}" \
             http://localhost:80/api/v4/version 2>/dev/null || echo "000")
@@ -62,85 +66,44 @@ gitlab_wait_for_api() {
     return 1
 }
 
-gitlab_ensure_root_user() {
-    log_step "GITLAB: Ensuring root admin user exists..."
-
-    local gitlab_pod
+gitlab_pat_is_valid() {
+    local pat="$1" gitlab_pod
+    [[ -n "${pat}" ]] || return 1
     gitlab_pod=$(gitlab_get_pod)
-    if [[ -z "${gitlab_pod}" ]]; then
-        log_error "GitLab pod not found"
-        return 1
-    fi
+    [[ "$(kubectl exec -n "${GITLAB_NAMESPACE}" "${gitlab_pod}" -- \
+        curl -sf -o /dev/null -w "%{http_code}" -H "PRIVATE-TOKEN: ${pat}" \
+        http://localhost:80/api/v4/user 2>/dev/null)" == "200" ]]
+}
 
-    gitlab_wait_for_rails "${gitlab_pod}" || return 1
+# Utente root, password e PAT in un solo rails runner: ogni invocazione carica Rails da
+# capo e costa circa due minuti, tre chiamate separate ne costavano sei.
+gitlab_bootstrap_root() {
+    log_step "GITLAB: Ensuring root user, password and Personal Access Token..."
 
-    local admin_count
-    admin_count=$(gitlab_rails_runner "${gitlab_pod}" 'puts User.admins.count' | tail -1)
+    gitlab_wait_for_rails || return 1
 
-    if [[ "${admin_count}" =~ ^[0-9]+$ ]] && [[ "${admin_count}" -gt 0 ]]; then
-        log_success "Root admin exists (${admin_count} admin(s))"
-        log_info "Resetting root password to match config..."
-        gitlab_rails_runner "${gitlab_pod}" "
-u = User.find_by(username: 'root')
-u.password = '${GITLAB_ROOT_PASSWORD}'
-u.password_confirmation = '${GITLAB_ROOT_PASSWORD}'
-u.save!
-puts 'PASSWORD_RESET_OK'
-" | tail -1
+    if gitlab_pat_is_valid "$(gitlab_get_pat)"; then
+        log_success "Existing PAT is still valid, root already configured"
         return 0
     fi
 
-    log_warn "No admin users found — creating root user..."
-    gitlab_rails_runner "${gitlab_pod}" "
-u = User.new(
-  username: 'root',
-  email: 'admin@example.com',
-  name: 'Administrator',
-  password: '${GITLAB_ROOT_PASSWORD}',
-  password_confirmation: '${GITLAB_ROOT_PASSWORD}',
-  admin: true,
-  user_type: :human
-)
-u.skip_confirmation!
-u.assign_personal_namespace(Organizations::Organization.default_organization)
-u.save!
-puts 'ROOT_USER_CREATED: id=' + u.id.to_s
-" | tail -1
-
-    log_success "Root admin user created | username=root"
-}
-
-gitlab_create_pat() {
-    log_step "GITLAB: Creating Personal Access Token..."
-
-    local existing_pat
-    existing_pat=$(gitlab_get_pat)
-    if [[ -n "${existing_pat}" ]]; then
-        local gitlab_pod
-        gitlab_pod=$(gitlab_get_pod)
-        local pat_valid
-        pat_valid=$(kubectl exec -n "${GITLAB_NAMESPACE}" "${gitlab_pod}" -- \
-            curl -sf -o /dev/null -w "%{http_code}" \
-            -H "PRIVATE-TOKEN: ${existing_pat}" \
-            http://localhost:80/api/v4/user 2>/dev/null || echo "000")
-        if [[ "${pat_valid}" == "200" ]]; then
-            log_success "Existing PAT is still valid"
-            return 0
-        fi
-        log_warn "Existing PAT is invalid, creating new one..."
-    fi
-
-    local gitlab_pod
+    local gitlab_pod output pat_token
     gitlab_pod=$(gitlab_get_pod)
-    if [[ -z "${gitlab_pod}" ]]; then
-        log_error "GitLab pod not found"
-        return 1
-    fi
-
-    # Purpose: create PAT via rails runner (only reliable method in GitLab 18.x)
-    local pat_output
-    pat_output=$(gitlab_rails_runner "${gitlab_pod}" '
+    # La password passa come variabile d'ambiente del processo nel pod, non interpolata nel
+    # codice Ruby: un apice nella password romperebbe lo script.
+    output=$(kubectl exec -n "${GITLAB_NAMESPACE}" "${gitlab_pod}" -- \
+        env GITLAB_PW="${GITLAB_ROOT_PASSWORD}" gitlab-rails runner '
+pw = ENV.fetch("GITLAB_PW")
 u = User.find_by(username: "root")
+if u.nil?
+  u = User.new(username: "root", email: "admin@example.com", name: "Administrator", admin: true, user_type: :human)
+  u.skip_confirmation!
+  u.assign_personal_namespace(Organizations::Organization.default_organization)
+  puts "ROOT_CREATED"
+end
+u.password = pw
+u.password_confirmation = pw
+u.save!
 u.personal_access_tokens.where(name: "bootstrap-token").each(&:revoke!)
 token = u.personal_access_tokens.create!(
   name: "bootstrap-token",
@@ -148,32 +111,24 @@ token = u.personal_access_tokens.create!(
   expires_at: 365.days.from_now
 )
 puts "PAT_TOKEN=#{token.token}"
-' | grep "PAT_TOKEN=" | head -1)
-
-    local pat_token="${pat_output#PAT_TOKEN=}"
+' 2>/dev/null)
+    pat_token=$(grep -o 'PAT_TOKEN=.*' <<< "${output}" | head -1)
+    pat_token="${pat_token#PAT_TOKEN=}"
     if [[ -z "${pat_token}" ]]; then
-        log_error "Failed to create PAT"
+        log_error "Failed to configure root and create PAT"
         return 1
     fi
+    grep -q ROOT_CREATED <<< "${output}" && log_info "Root user created"
 
-    # Purpose: store PAT in K8s secret for use by gitops and argocd modules
     kubectl create secret generic "${GITLAB_PAT_SECRET_NAME}" \
         --namespace="${GITLAB_NAMESPACE}" \
         --from-literal=token="${pat_token}" \
         --dry-run=client -o yaml | kubectl apply -f -
 
-    log_success "PAT created and stored in secret '${GITLAB_PAT_SECRET_NAME}'"
-
-    local verify_status
-    verify_status=$(kubectl exec -n "${GITLAB_NAMESPACE}" "${gitlab_pod}" -- \
-        curl -sf -o /dev/null -w "%{http_code}" \
-        -H "PRIVATE-TOKEN: ${pat_token}" \
-        http://localhost:80/api/v4/user 2>/dev/null || echo "000")
-
-    if [[ "${verify_status}" == "200" ]]; then
-        log_success "PAT verified successfully"
+    if gitlab_pat_is_valid "${pat_token}"; then
+        log_success "Root configured, PAT stored in secret '${GITLAB_PAT_SECRET_NAME}'"
     else
-        log_error "PAT verification failed (HTTP ${verify_status})"
+        log_error "PAT verification failed"
         return 1
     fi
 }
@@ -194,7 +149,7 @@ gitlab_deploy() {
 
     kubectl create namespace "${GITLAB_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 
-    local gitlab_manifest="${SCRIPT_DIR}/manifests/gitlab/gitlab-deployment.yaml"
+    local gitlab_manifest="${SCRIPT_DIR}/repos/platform/gitlab/gitlab-deployment.yaml"
     if [[ ! -f "${gitlab_manifest}" ]]; then
         log_error "GitLab manifest not found: ${gitlab_manifest}"
         exit 1
@@ -202,18 +157,14 @@ gitlab_deploy() {
 
     kubectl apply -f "${gitlab_manifest}"
 
-    log_info "Waiting for GitLab to be ready (10-15 minutes)..."
+    log_info "Waiting for GitLab to be ready (8-12 minutes)..."
     wait_for_pod_ready "${GITLAB_NAMESPACE}" "app=gitlab" 1200 || {
         log_error "GitLab failed to start"
         log_info "Check: kubectl logs -n ${GITLAB_NAMESPACE} -l app=gitlab"
         return 1
     }
 
-    log_info "Waiting for GitLab internal services..."
-    sleep 60
-
-    gitlab_ensure_root_user
-    gitlab_create_pat
+    gitlab_bootstrap_root || return 1
 
     log_success "GITLAB: Deployed and configured"
 }
@@ -239,4 +190,48 @@ gitlab_info() {
     echo "  API Token:      ${pat:-N/A}"
     echo "  API Test:       curl -H 'PRIVATE-TOKEN: <token>' http://localhost:${GITLAB_LOCAL_PORT}/api/v4/user"
     echo ""
+}
+
+# ---------------------------------------------------------------------------
+# GitLab via API, dall'interno del pod
+# ---------------------------------------------------------------------------
+
+gitlab_api() {
+    local method="$1" path="$2" data="${3:-}"
+    local pod pat
+    pod=$(gitlab_get_pod)
+    pat=$(gitlab_get_pat)
+    if [[ -n "${data}" ]]; then
+        printf '%s' "${data}" | kubectl exec -i -n "${GITLAB_NAMESPACE}" "${pod}" -- \
+            curl -sf -X "${method}" -H "PRIVATE-TOKEN: ${pat}" -H 'Content-Type: application/json' \
+            --data @- "http://localhost:80/api/v4${path}"
+    else
+        kubectl exec -n "${GITLAB_NAMESPACE}" "${pod}" -- \
+            curl -sf -X "${method}" -H "PRIVATE-TOKEN: ${pat}" "http://localhost:80/api/v4${path}"
+    fi
+}
+
+# Il repo e' l'ultimo argomento, opzionale: di default quello dell'app promossa da Kargo.
+gitlab_repo_path() {
+    jq -rn --arg r "root/${1:-${KARGO_PROJECT}}" '$r|@uri'
+}
+
+gitlab_file_raw() {
+    local file="$1" ref="$2" repo="${3:-}"
+    gitlab_api GET "/projects/$(gitlab_repo_path "${repo}")/repository/files/$(jq -rn --arg f "${file}" '$f|@uri')/raw?ref=$(jq -rn --arg r "${ref}" '$r|@uri')"
+}
+
+# Uso: gitlab_commit_file FILE CONTENUTO MESSAGGIO [REPO]  (su main). Stampa lo short id.
+gitlab_commit_file() {
+    local file="$1" content="$2" message="$3" repo="${4:-}"
+    gitlab_api POST "/projects/$(gitlab_repo_path "${repo}")/repository/commits" \
+        "$(jq -cn --arg f "${file}" --arg c "${content}" --arg m "${message}" \
+            '{branch: "main", commit_message: $m, actions: [{action: "update", file_path: $f, content: $c}]}')" |
+        jq -r '.short_id // empty'
+}
+
+gitlab_last_commit() {
+    local ref="$1" repo="${2:-}"
+    gitlab_api GET "/projects/$(gitlab_repo_path "${repo}")/repository/commits?ref_name=$(jq -rn --arg r "${ref}" '$r|@uri')&per_page=1" |
+        jq -r '.[0] | "\(.short_id)  \(.author_name) <\(.author_email)>  \(.title)"'
 }

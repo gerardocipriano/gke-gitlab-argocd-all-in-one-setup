@@ -1,0 +1,33 @@
+# Risorse di controllo della demo Kargo: Project, Warehouse, PromotionTask e Stage.
+# Non contiene carichi di lavoro: descrive solo cosa osservare e come promuovere.
+# Il Project è cluster-scoped e crea il namespace kargo-demo, quindi va sincronizzato
+# prima delle risorse namespaced (sync-wave).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kargo-project
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: kargo-project
+    app.kubernetes.io/component: application
+spec:
+  project: gitops
+  source:
+    repoURL: http://gitlab.gitlab.svc.cluster.local/root/kargo-demo.git
+    targetRevision: HEAD
+    path: kargo
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kargo-demo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        maxDuration: 2m
+    syncOptions:
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
