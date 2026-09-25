@@ -440,7 +440,7 @@
     </article>
 
     <div class="chapter-head" id="head">
-      <span class="eyebrow" id="ch-num">capitolo 1 di 9</span>
+      <span class="eyebrow" id="ch-num">capitolo 1 di 8</span>
       <h2 id="ch-title">La mappa</h2>
       <p class="idea" id="ch-idea"></p>
       <ul class="points" id="ch-points"></ul>
@@ -568,8 +568,8 @@
           o: ["dev 4 e staging 5, entrambe Synced", "dev torna a 1; staging resta a 5 e diventa OutOfSync", "Tornano entrambe al valore del git", "dev resta a 4, staging torna a 2"], a: 1,
           why: "selfHeal è attivo solo su dev. In staging ArgoCD rileva il drift e lo mostra come OutOfSync, ma senza sync automatico non agisce: il rientro è una decisione, presa con un Sync o con la prossima promozione." },
         { q: "Su kargo-demo-dev c'è selfHeal ma prune è spento. Perché?",
-          o: ["prune e selfHeal non si possono attivare insieme", "Con prune ArgoCD cancellerebbe dal namespace tutto ciò che il branch non conosce", "prune rallenta il self-heal", "prune richiede una licenza"], a: 1,
-          why: "prune rimuove le risorse gestite che spariscono dal source. Su un branch renderizzato da un tool è un rischio che non serve per mostrare il self-heal." }
+          o: ["prune e selfHeal non si possono attivare insieme", "Se un rendering di Kargo perdesse una risorsa, ArgoCD la cancellerebbe dal cluster senza chiedere", "prune rallenta il self-heal", "prune richiede una licenza"], a: 1,
+          why: "prune cancella le risorse gestite dall'Application che spariscono dal branch. Il branch lo scrive un tool: un rendering sbagliato diventerebbe una cancellazione automatica." }
       ] },
     { id: "rollback", points: ["Il Freight precedente resta promuovibile", "Il rollback è un commit nuovo: la storia resta intera", "Niente rollout undo: il git resterebbe indietro"], title: "Rollback", short: "Rollback",
       idea: "Tornare indietro usa lo stesso percorso del deploy: si ripromuove un Freight precedente.",
@@ -579,7 +579,7 @@
           o: ["kubectl rollout undo sul Deployment", "Ripromuovere in staging il Freight precedente", "git revert su main", "Cancellare il Freight nuovo"], a: 1,
           why: "Il Freight precedente è ancora promuovibile: Kargo riscrive stage/staging e ArgoCD sincronizza. Un rollout undo cambia il cluster ma non il git, quindi resta come drift." }
       ] },
-    { id: "debrief", points: ["Il git come unica fonte di verità, dall'inizio alla fine", "Cosa cambia in produzione", "Domande"], title: "Debriefing", short: "Debriefing",
+    { id: "debrief", hidden: true, points: ["Il git come unica fonte di verità, dall'inizio alla fine", "Cosa cambia in produzione", "Domande"], title: "Debriefing", short: "Debriefing",
       idea: "Quattro domande per chiudere, e il limite da dichiarare.",
       look: [],
       questions: [
@@ -596,7 +596,7 @@
           o: ["Niente: basta un Warehouse sul chart di ArgoCD", "Il metodo è lo stesso, ma servono cluster separati per stage: le CRD sono globali", "Kargo non può promuovere chart Helm", "ArgoCD si aggiorna da solo e non va promosso"], a: 1,
           why: "Kargo promuove chart e immagini come qualsiasi Freight. Un componente di piattaforma con CRD globali però non può esistere in tre versioni nello stesso cluster: servono cluster per stage, ed è proprio sulla major che staging fa da cancello." }
       ] }
-  ];
+  ].filter(function (c) { return !c.hidden; });
 
   var SAMPLE_LIVE = {
     ts: new Date().toISOString(),

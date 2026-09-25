@@ -12,7 +12,7 @@ ogni gesto.
 
 ```bash
 ./demo.sh prepare     # prima della sessione: cluster e piattaforma, circa 33 minuti su GKE
-./demo.sh             # davanti al pubblico: nove capitoli, circa 35 minuti
+./demo.sh             # davanti al pubblico: otto capitoli, circa 30 minuti
 ./demo.sh teardown    # alla fine: smonta tutto, cluster compreso se lo confermi
 ```
 
@@ -52,7 +52,6 @@ aspetta che qualcuno promuova dalla UI di Kargo.
 | 6 | Anche la configurazione viaggia | Un commit cambia solo il messaggio dell'app: nuovo Freight, stessa immagine | 4 |
 | 7 | Drift: chi vince | Scale a mano: dev torna da solo, staging resta OutOfSync fino al Sync | 5 |
 | 8 | Rollback | La versione nuova in staging, poi si ripromuove il Freight che c'era prima | 3 |
-| 9 | Debriefing | Quattro domande finali, il limite dell'architettura e gli upgrade di piattaforma | 5 |
 
 ![Transizione tra un capitolo e l'altro](docs/screenshots/banco-transizione.png)
 

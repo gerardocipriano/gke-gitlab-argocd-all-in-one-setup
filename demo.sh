@@ -29,7 +29,7 @@ Uso: $0 [prepare|present|teardown] [opzioni]
 Modalità:
   prepare    Crea cluster, GitLab, repo GitOps, ArgoCD e Kargo. Da lanciare prima della
              sessione: su GKE richiede circa 30 minuti.
-  present    La demo davanti al pubblico, nove capitoli (default). Circa 35 minuti.
+  present    La demo davanti al pubblico, otto capitoli (default). Circa 30 minuti.
   teardown   Smonta tutto, con una conferma per blocco e una per il cluster.
 
 Opzioni:
@@ -293,7 +293,6 @@ CHAPTERS=(
 "config|Anche la configurazione viaggia|4"
 "drift|Drift: chi vince|5"
 "rollback|Rollback|3"
-"debrief|Debriefing|5"
 )
 
 chapter_header() {
@@ -659,6 +658,7 @@ ch_rollback() {
     pause "capitolo successivo"
 }
 
+# Nascosto: fuori da CHAPTERS e da present, come il capitolo in docs/banco-regia.html.
 ch_debrief() {
     chapter_header 9
     say "Quattro domande per chiudere. La terza è il limite da dichiarare, prima che lo chieda qualcuno."
@@ -694,7 +694,7 @@ present() {
     pause "si parte"
 
     local n
-    local fns=(ch_mappa ch_appofapps ch_freight ch_promote ch_release ch_config ch_drift ch_rollback ch_debrief)
+    local fns=(ch_mappa ch_appofapps ch_freight ch_promote ch_release ch_config ch_drift ch_rollback)
     for (( n = START; n <= ${#fns[@]}; n++ )); do
         "${fns[$(( n - 1 ))]}"
     done

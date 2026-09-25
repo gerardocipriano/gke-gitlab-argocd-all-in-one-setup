@@ -6,8 +6,8 @@
 # selfHeal è attivo solo su questo stage: una modifica fatta a mano nel cluster viene
 # riportata allo stato del branch entro pochi secondi. Su staging e prod resta disattivo,
 # quindi la sincronizzazione la richiede Kargo al termine della promozione.
-# prune resta false: il branch contiene i manifest di un solo stage e non deve poter
-# cancellare risorse che non conosce.
+# prune resta false: il branch lo scrive Kargo, e un rendering che perde una risorsa
+# diventerebbe una cancellazione automatica nel cluster.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
