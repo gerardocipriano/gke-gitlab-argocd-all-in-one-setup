@@ -147,7 +147,17 @@ ask_confirm() {
 }
 
 cmd_teardown() {
-    log_step "TEARDOWN: Starting resource-by-resource cleanup..."
+    log_step "TEARDOWN: Starting cleanup..."
+
+    # GitLab, ArgoCD e Kargo vivono tutti nel cluster: cancellato quello non resta altro.
+    # Il cluster non rientra in ASSUME_YES: va chiesto sempre, o forzato con DELETE_CLUSTER=1.
+    log_info "==> Cluster"
+    if [[ "${DELETE_CLUSTER:-0}" == "1" ]] || ASSUME_YES=0 ask_confirm "Delete the entire cluster?"; then
+        cluster_delete
+        log_success "TEARDOWN: Completed"
+        return 0
+    fi
+    log_info "Keeping the cluster, cleaning up resource by resource"
 
     # ArgoCD va per primo: finche' e' vivo, la root Application risincronizza e ricrea
     # le risorse Kargo appena cancellate.
@@ -177,14 +187,6 @@ cmd_teardown() {
         gitlab_delete
     else
         log_info "Skipping GitLab"
-    fi
-
-    # Il cluster non rientra in ASSUME_YES: va chiesto sempre, o forzato con DELETE_CLUSTER=1.
-    log_info "==> Cluster"
-    if [[ "${DELETE_CLUSTER:-0}" == "1" ]] || ASSUME_YES=0 ask_confirm "Delete the entire cluster?"; then
-        cluster_delete
-    else
-        log_info "Skipping cluster deletion"
     fi
 
     log_success "TEARDOWN: Completed"
@@ -219,15 +221,15 @@ print_usage() {
     echo "  delete-argocd   Delete ArgoCD resources only"
     echo "  delete-gitops   Delete gitops repository only"
     echo "  delete-gitlab   Delete GitLab resources only"
-    echo "  teardown        Interactive full cleanup (reverse of bootstrap)"
+    echo "  teardown        Delete the cluster, or clean up resource by resource"
     echo ""
     echo "Examples:"
     echo "  $0 all                        # kind (default)"
     echo "  $0 --provider=gke all         # GKE"
     echo "  CLUSTER_PROVIDER=gke $0 all   # GKE via env var"
     echo "  $0 teardown                   # interactive cleanup"
-    echo "  ASSUME_YES=1 $0 teardown      # non-interactive cleanup (cluster escluso)"
-    echo "  ASSUME_YES=1 DELETE_CLUSTER=1 $0 teardown   # cleanup completo, cluster incluso"
+    echo "  ASSUME_YES=1 $0 teardown      # cluster tenuto, cleanup delle singole risorse"
+    echo "  ASSUME_YES=1 DELETE_CLUSTER=1 $0 teardown   # cancella subito il cluster"
     echo ""
 }
 

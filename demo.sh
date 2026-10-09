@@ -30,7 +30,7 @@ Modalità:
   prepare    Crea cluster, GitLab, repo GitOps, ArgoCD e Kargo. Da lanciare prima della
              sessione: su GKE richiede circa 30 minuti.
   present    La demo davanti al pubblico, otto capitoli (default). Circa 30 minuti.
-  teardown   Smonta tutto, con una conferma per blocco e una per il cluster.
+  teardown   Cancella il cluster, o in alternativa smonta blocco per blocco.
 
 Opzioni:
   --provider kind|gke   Provider del cluster (default: gke)

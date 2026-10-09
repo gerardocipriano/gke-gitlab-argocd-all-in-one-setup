@@ -168,7 +168,7 @@ Tutto sta in `lib/config.sh` e si sovrascrive con variabili d'ambiente.
 ./bootstrap.sh --provider gke status
 ./bootstrap.sh --provider gke portforward
 ./bootstrap.sh --provider gke delete-kargo|delete-argocd|delete-gitops|delete-gitlab
-./bootstrap.sh --provider gke teardown        # guidato, una conferma per blocco
+./bootstrap.sh --provider gke teardown        # chiede prima il cluster, poi blocco per blocco
 ASSUME_YES=1 DELETE_CLUSTER=1 ./bootstrap.sh --provider gke teardown
 ```
 

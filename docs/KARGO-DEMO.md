@@ -263,13 +263,14 @@ senza ricreare tutto.
 ./bootstrap.sh clean            # il cluster
 ```
 
-Il comando `teardown` li esegue in ordine inverso al bootstrap, chiedendo conferma prima di
-ogni blocco. Il cluster resta in piedi se non lo si chiede esplicitamente:
+Il comando `teardown` chiede per prima cosa se cancellare il cluster: GitLab, ArgoCD e Kargo
+ci vivono dentro, quindi con il cluster se ne va tutto. Se il cluster resta, esegue i blocchi in
+ordine inverso al bootstrap, con una conferma per ciascuno:
 
 ```bash
 ./bootstrap.sh teardown
-ASSUME_YES=1 ./bootstrap.sh teardown                    # niente domande, cluster escluso
-ASSUME_YES=1 DELETE_CLUSTER=1 ./bootstrap.sh teardown   # cluster incluso
+ASSUME_YES=1 ./bootstrap.sh teardown                    # cluster tenuto, niente domande
+ASSUME_YES=1 DELETE_CLUSTER=1 ./bootstrap.sh teardown   # cancella subito il cluster
 ```
 
 Una nota che conta: finché ArgoCD è vivo, la root Application `apps` ricrea le Application
